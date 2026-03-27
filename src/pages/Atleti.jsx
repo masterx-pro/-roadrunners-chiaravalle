@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, listaDocumentiAtleta, caricaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -552,22 +552,32 @@ function AtletaRow({ atleta, onClick }) {
 function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattivato }) {
   const [documenti, setDocumenti] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
-  const [uploading, setUploading] = useState(null) // null o nome categoria
+  const [uploading, setUploading] = useState(null) // null o chiave identificativa
   const [confermaDisattiva, setConfermaDisattiva] = useState(false)
   const [disattivando, setDisattivando] = useState(false)
   const [folderId, setFolderId] = useState(atleta.Drive_Folder_ID || '')
   const [creandoCartella, setCreandoCartella] = useState(false)
+  const [nuovoDocForm, setNuovoDocForm] = useState(false)
+  const [nuovoDocNome, setNuovoDocNome] = useState('')
+  const [nuovoDocFile, setNuovoDocFile] = useState(null)
+  const [eliminando, setEliminando] = useState(null)
 
   const CATEGORIE_DOC = [
     { key: 'certificato_medico', label: 'Certificato medico', icona: '🏥' },
     { key: 'tessera_fisr', label: 'Tessera FISR', icona: '🪪' },
     { key: 'liberatoria_privacy', label: 'Liberatoria privacy', icona: '📝' },
-    { key: 'altro', label: 'Altro', icona: '📎' },
   ]
+
+  const PREFISSI_CATEGORIA = ['certificato_medico', 'tessera_fisr', 'liberatoria_privacy']
 
   const pattiniAtleta = pattini.filter(p => p.ID_Atleta === atleta.ID_Atleta)
   const statoCert = statoScadenza(atleta.Scad_Certificato)
   const statoFISR = statoScadenza(atleta.Scad_FISR)
+
+  async function ricaricaDocs() {
+    const docs = await listaDocumentiAtleta(folderId)
+    setDocumenti(docs)
+  }
 
   useEffect(() => {
     if (folderId) {
@@ -580,6 +590,12 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
 
   function trovaDocPerCategoria(catKey) {
     return documenti.find(d => d.name?.toLowerCase().startsWith(catKey))
+  }
+
+  function documentiExtra() {
+    return documenti.filter(d =>
+      !PREFISSI_CATEGORIA.some(p => d.name?.toLowerCase().startsWith(p))
+    )
   }
 
   async function handleCreaCartella() {
@@ -616,14 +632,38 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     if (!file || !folderId) return
     setUploading(catKey)
     try {
-      const ext = file.name.split('.').pop() || 'pdf'
-      const anno = new Date().getFullYear()
-      const nomeFile = `${catKey}_${anno}.${ext}`
+      const ext = file.name.includes('.') ? file.name.split('.').pop() : 'pdf'
+      const nomeFile = `${catKey}.${ext}`
       await caricaDocumento(file, nomeFile, folderId)
-      const docs = await listaDocumentiAtleta(folderId)
-      setDocumenti(docs)
+      await ricaricaDocs()
     } finally {
       setUploading(null)
+    }
+  }
+
+  async function handleSalvaDocExtra() {
+    if (!nuovoDocNome.trim() || !nuovoDocFile || !folderId) return
+    setUploading('nuovo_extra')
+    try {
+      const ext = nuovoDocFile.name.includes('.') ? nuovoDocFile.name.split('.').pop() : 'pdf'
+      const nomeFile = `${nuovoDocNome.trim()}.${ext}`
+      await caricaDocumento(nuovoDocFile, nomeFile, folderId)
+      await ricaricaDocs()
+      setNuovoDocForm(false)
+      setNuovoDocNome('')
+      setNuovoDocFile(null)
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  async function handleEliminaDoc(doc) {
+    setEliminando(doc.id)
+    try {
+      await eliminaDocumento(doc.id)
+      await ricaricaDocs()
+    } finally {
+      setEliminando(null)
     }
   }
 
@@ -729,40 +769,95 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
         ) : loadingDocs ? (
           <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
         ) : (
-          CATEGORIE_DOC.map((cat, i) => {
-            const doc = trovaDocPerCategoria(cat.key)
-            return (
-              <div key={cat.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: i < CATEGORIE_DOC.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                <span style={{ fontSize: '18px', flexShrink: 0 }}>{cat.icona}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{cat.label}</div>
+          <>
+            {/* Categorie predefinite */}
+            {CATEGORIE_DOC.map((cat, i) => {
+              const doc = trovaDocPerCategoria(cat.key)
+              return (
+                <div key={cat.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontSize: '18px', flexShrink: 0 }}>{cat.icona}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px' }}>{cat.label}</div>
+                    {doc ? (
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
+                    ) : (
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Non caricato</div>
+                    )}
+                  </div>
                   {doc ? (
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px', textDecoration: 'none' }}>Apri</a>
+                      <label style={{ cursor: 'pointer' }}>
+                        <input type="file" accept="*/*" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
+                        <span className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px' }}>
+                          {uploading === cat.key ? '...' : 'Sostituisci'}
+                        </span>
+                      </label>
+                    </div>
                   ) : (
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Non caricato</div>
-                  )}
-                </div>
-                {doc ? (
-                  <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                    <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px', textDecoration: 'none' }}>Apri</a>
-                    <label style={{ cursor: 'pointer' }}>
-                      <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
-                      <span className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px' }}>
-                        {uploading === cat.key ? '...' : 'Sostituisci'}
+                    <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                      <input type="file" accept="*/*" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
+                      <span className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                        {uploading === cat.key ? '...' : 'Carica'}
                       </span>
                     </label>
-                  </div>
-                ) : (
-                  <label style={{ cursor: 'pointer', flexShrink: 0 }}>
-                    <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
-                    <span className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '12px' }}>
-                      {uploading === cat.key ? '...' : 'Carica'}
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Altri documenti */}
+            <div style={{ padding: '10px 0 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-secondary)' }}>Altri documenti</div>
+              {!nuovoDocForm && (
+                <button className="btn btn-ghost" onClick={() => setNuovoDocForm(true)} style={{ padding: '2px 8px', fontSize: '16px', lineHeight: 1 }}>+</button>
+              )}
+            </div>
+
+            {documentiExtra().length === 0 && !nuovoDocForm && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', paddingBottom: '6px' }}>Nessun documento extra</div>
+            )}
+
+            {documentiExtra().map(doc => (
+              <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '16px', flexShrink: 0 }}>📄</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
+                </div>
+                <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                  <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px', textDecoration: 'none' }}>Apri</a>
+                  <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px', color: '#FF6B7A' }}
+                    disabled={eliminando === doc.id}
+                    onClick={() => handleEliminaDoc(doc)}>
+                    {eliminando === doc.id ? '...' : 'Elimina'}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Form nuovo documento extra */}
+            {nuovoDocForm && (
+              <div style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+                <div className="form-group" style={{ marginBottom: '8px' }}>
+                  <input className="form-input" placeholder="Nome documento (es. Consenso foto)" value={nuovoDocNome} onChange={e => setNuovoDocNome(e.target.value)} style={{ fontSize: '13px' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                  <label style={{ cursor: 'pointer', flex: 1 }}>
+                    <input type="file" accept="*/*" style={{ display: 'none' }} onChange={e => setNuovoDocFile(e.target.files[0] || null)} />
+                    <span className="btn btn-ghost btn-full" style={{ fontSize: '13px' }}>
+                      {nuovoDocFile ? nuovoDocFile.name : 'Scegli file'}
                     </span>
                   </label>
-                )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="btn btn-ghost" onClick={() => { setNuovoDocForm(false); setNuovoDocNome(''); setNuovoDocFile(null) }} style={{ flex: 1, fontSize: '13px' }}>Annulla</button>
+                  <button className="btn btn-primary" onClick={handleSalvaDocExtra} disabled={!nuovoDocNome.trim() || !nuovoDocFile || uploading === 'nuovo_extra'} style={{ flex: 1, fontSize: '13px' }}>
+                    {uploading === 'nuovo_extra' ? 'Caricamento...' : 'Salva'}
+                  </button>
+                </div>
               </div>
-            )
-          })
+            )}
+          </>
         )}
       </div>
 

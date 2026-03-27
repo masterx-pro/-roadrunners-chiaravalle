@@ -294,6 +294,14 @@ export async function caricaDocumento(file, nomefile, idCartella) {
   return res.json()
 }
 
+export async function eliminaDocumento(fileId) {
+  const res = await fetch(`${DRIVE_URL}/files/${fileId}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${getToken()}` }
+  })
+  return res.ok
+}
+
 export async function listaDocumentiAtleta(idCartella) {
   const res = await fetch(
     `${DRIVE_URL}/files?q='${idCartella}'+in+parents&fields=files(id,name,mimeType,webViewLink)`,
