@@ -546,6 +546,44 @@ function AtletaRow({ atleta, onClick }) {
 }
 
 // ============================================================
+// COMPRESSIONE IMMAGINI
+// ============================================================
+
+async function comprimiImmagine(file, maxWidth = 1200, qualita = 0.7) {
+  if (!file.type.startsWith('image/')) return file
+
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      let width = img.width
+      let height = img.height
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, width, height)
+
+      canvas.toBlob(
+        (blob) => {
+          const fileCompresso = new File([blob], file.name, { type: 'image/jpeg' })
+          URL.revokeObjectURL(url)
+          resolve(fileCompresso)
+        },
+        'image/jpeg',
+        qualita
+      )
+    }
+    img.src = url
+  })
+}
+
+// ============================================================
 // SCHEDA ATLETA
 // ============================================================
 
@@ -632,9 +670,10 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     if (!file || !folderId) return
     setUploading(catKey)
     try {
-      const ext = file.name.includes('.') ? file.name.split('.').pop() : 'pdf'
+      const fileFinale = await comprimiImmagine(file)
+      const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
       const nomeFile = `${catKey}.${ext}`
-      await caricaDocumento(file, nomeFile, folderId)
+      await caricaDocumento(fileFinale, nomeFile, folderId)
       await ricaricaDocs()
     } finally {
       setUploading(null)
@@ -645,9 +684,10 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     if (!nuovoDocNome.trim() || !nuovoDocFile || !folderId) return
     setUploading('nuovo_extra')
     try {
-      const ext = nuovoDocFile.name.includes('.') ? nuovoDocFile.name.split('.').pop() : 'pdf'
+      const fileFinale = await comprimiImmagine(nuovoDocFile)
+      const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (nuovoDocFile.name.includes('.') ? nuovoDocFile.name.split('.').pop() : 'pdf')
       const nomeFile = `${nuovoDocNome.trim()}.${ext}`
-      await caricaDocumento(nuovoDocFile, nomeFile, folderId)
+      await caricaDocumento(fileFinale, nomeFile, folderId)
       await ricaricaDocs()
       setNuovoDocForm(false)
       setNuovoDocNome('')
