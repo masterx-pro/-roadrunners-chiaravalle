@@ -170,37 +170,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* DOCUMENTI UTILI */}
-      <div className="section-title">Documenti utili</div>
-      <div className="card" style={{ marginBottom: '16px' }}>
-        <a
-          href="https://drive.google.com/file/d/1L2bEyGIqyYWRGTBD3XV6HtRAPCkk9YzE/view"
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            display: 'flex', alignItems: 'center', gap: '14px',
-            padding: '14px 0', textDecoration: 'none'
-          }}
-        >
-          <div style={{
-            width: '44px', height: '44px', borderRadius: 'var(--radius-sm)',
-            background: 'var(--accent-soft)', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: '22px', flexShrink: 0
-          }}>📄</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '15px' }}>
-              Regolamento Tecnico Corsa
-            </div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
-              Stagione 2025/2026 — Skate Italia
-            </div>
-          </div>
-          <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', fontSize: '13px' }}>
-            Apri →
-          </span>
-        </a>
-      </div>
-
       {/* ALERT SCADENZE */}
       {alerts.length > 0 ? (
         <div className="card">

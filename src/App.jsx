@@ -14,7 +14,7 @@ const TABS = [
   { id: 'atleti',        label: 'Atleti',     icon: IconAtleti },
   { id: 'attrezzature',  label: 'Attrezz.',   icon: IconSkate },
   { id: 'calendario',    label: 'Calendario', icon: IconCal },
-  { id: 'utenti',        label: 'Utenti',     icon: IconUtenti },
+  { id: 'utenti',        label: 'Impost.',    icon: IconUtenti },
 ]
 
 export default function App() {

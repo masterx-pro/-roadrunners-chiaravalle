@@ -3,6 +3,114 @@ import { getUtentiAutorizzati, aggiungiRiga, aggiornaRiga, scriviLog } from '../
 import { SHEETS } from '../config/google'
 
 export default function Utenti() {
+  const [sezione, setSezione] = useState(null) // null | 'utenti' | 'documenti'
+
+  if (sezione === 'utenti') {
+    return <GestioneUtenti onBack={() => setSezione(null)} />
+  }
+
+  if (sezione === 'documenti') {
+    return <DocumentiUtili onBack={() => setSezione(null)} />
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Impostazioni</h1>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <button className="card" onClick={() => setSezione('utenti')} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}>
+          <span style={{ fontSize: '32px' }}>👥</span>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', textTransform: 'uppercase' }}>Utenti</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Gestisci utenti autorizzati</div>
+          </div>
+        </button>
+
+        <button className="card" onClick={() => setSezione('documenti')} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}>
+          <span style={{ fontSize: '32px' }}>📋</span>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', textTransform: 'uppercase' }}>Documenti utili</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Regolamenti e moduli</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// DOCUMENTI UTILI
+// ============================================================
+
+const DOCUMENTI = [
+  {
+    nome: 'Regolamento Tecnico Corsa',
+    descrizione: 'Stagione 2025/2026 — Skate Italia',
+    href: 'https://drive.google.com/file/d/1L2bEyGIqyYWRGTBD3XV6HtRAPCkk9YzE/view',
+  },
+  {
+    nome: 'Modello gara a squadre',
+    descrizione: 'Modello ufficiale',
+    href: 'https://drive.google.com/drive/folders/1eRHXgSUKDtWOkgzpOWDp1y_TERXp9kr9',
+  },
+  {
+    nome: 'Depennamento tardivo',
+    descrizione: 'Modulo depennamento',
+    href: 'https://drive.google.com/file/d/14i8Sk_ngqTcBvCPTRL3OF89TKvKoiI2f/view',
+  },
+]
+
+function DocumentiUtili({ onBack }) {
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Documenti utili</h1>
+      </div>
+
+      <div className="card">
+        {DOCUMENTI.map((doc, i) => (
+          <a
+            key={i}
+            href={doc.href}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '14px',
+              padding: '14px 0', textDecoration: 'none',
+              borderBottom: i < DOCUMENTI.length - 1 ? '1px solid var(--border)' : 'none'
+            }}
+          >
+            <div style={{
+              width: '44px', height: '44px', borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-soft)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: '22px', flexShrink: 0
+            }}>📄</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '15px' }}>
+                {doc.nome}
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
+                {doc.descrizione}
+              </div>
+            </div>
+            <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', fontSize: '13px', flexShrink: 0 }}>
+              Apri →
+            </span>
+          </a>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// GESTIONE UTENTI
+// ============================================================
+
+function GestioneUtenti({ onBack }) {
   const [utenti, setUtenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'modifica'
@@ -47,7 +155,8 @@ export default function Utenti() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Utenti</h1>
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Utenti</h1>
         <button className="btn btn-primary" onClick={() => setVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>
           +
         </button>
