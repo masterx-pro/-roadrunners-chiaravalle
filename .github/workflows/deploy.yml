@@ -21,6 +21,8 @@ jobs:
 
       - name: Build
         run: npx vite build
+        env:
+          GITHUB_PAGES: true
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
