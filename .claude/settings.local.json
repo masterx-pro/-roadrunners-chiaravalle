@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(npx:*)",
+      "Bash(npm install:*)",
+      "Bash(SRC=\"C:/Users/maste/OneDrive/Desktop/skating-app/file scaricati/files\")",
+      "Bash(DST=\"C:/Users/maste/OneDrive/Desktop/skating-app\")",
+      "Bash(__NEW_LINE_03f16b349ebc172f__ cp:*)",
+      "Bash(__NEW_LINE_03f16b349ebc172f__ echo:*)",
+      "Bash(npm run:*)",
+      "Bash(cd:*)",
+      "Bash(pip install:*)",
+      "Bash(python -c \":*)",
+      "Bash(vercel --prod)"
+    ]
+  }
+}
