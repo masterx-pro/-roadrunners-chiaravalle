@@ -11,7 +11,7 @@ export default function LoginPage({ onSignIn, errore }) {
       gap: '24px'
     }}>
       <div style={{ textAlign: 'center' }}>
-        <img src="/logo.png" alt="Logo" width="140px" style={{ marginBottom: '16px' }} />
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Logo" width="140px" style={{ marginBottom: '16px' }} />
         <h1 style={{
           fontFamily: 'var(--font-display)',
           fontSize: '32px',
