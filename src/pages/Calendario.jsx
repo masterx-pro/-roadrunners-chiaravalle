@@ -344,7 +344,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate }) {
                 {isIscritto ? '✓' : `${a.Nome?.[0]}${a.Cognome?.[0]}`}
               </div>
               <div className="atleta-info">
-                <div className="atleta-nome">{a.Nome} {a.Cognome}</div>
+                <div className="atleta-nome">{a.Nome} {a.Cognome}{a.Numero_Gara ? ` — #${a.Numero_Gara}` : ''}</div>
                 <div className="atleta-sub">{a.Nome_Categoria || '—'}</div>
               </div>
               <span style={{ color: isIscritto ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '13px' }}>

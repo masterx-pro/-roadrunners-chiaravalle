@@ -92,7 +92,7 @@ export async function creaAtleta(atleta) {
     atleta.scadCertificato || '', atleta.scadFISR || '', atleta.numeroFISR || '',
     '', // Drive_Folder_ID
     'TRUE', atleta.dataIscrizione || new Date().toISOString().split('T')[0],
-    atleta.note || ''
+    atleta.note || '', atleta.numeroGara || ''
   ]
   await aggiungiRiga(SHEETS.ATLETI, valori)
   await scriviLog('Nuovo', 'Atleta', `${atleta.nome} ${atleta.cognome}`)

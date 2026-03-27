@@ -62,9 +62,10 @@ export function esportaIscrittGaraPDF(gara, atletiIscritti) {
   if (gara.Luogo) { doc.text(`Luogo: ${gara.Luogo}`, 14, y); y += 6 }
   autoTable(doc, {
     startY: y + 4,
-    head: [['Nome', 'Cognome', 'Categoria', 'Tessera FISR']],
+    head: [['Nome', 'Cognome', 'N° Gara', 'Categoria', 'Tessera FISR']],
     body: atletiIscritti.map(a => [
       a.Nome, a.Cognome,
+      a.Numero_Gara || '—',
       a.Nome_Categoria || a.ID_Categoria || '',
       a.Numero_FISR || '—'
     ]),

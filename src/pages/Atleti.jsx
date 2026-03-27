@@ -187,6 +187,10 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
           <label className="form-label">Data iscrizione</label>
           <input className="form-input" type="date" value={form.dataIscrizione} onChange={e => update('dataIscrizione', e.target.value)} />
         </div>
+        <div className="form-group">
+          <label className="form-label">Numero di gara</label>
+          <input className="form-input" value={form.numeroGara} onChange={e => update('numeroGara', e.target.value)} placeholder="es. 42" />
+        </div>
       </div>
 
       <div className="section-title">Contatti genitore</div>
@@ -277,7 +281,7 @@ function NuovoAtleta({ onBack, onSaved }) {
     idCategoria: '', genitoreNome: '', genitoreTelefono: '',
     genitoreEmail: '', scadCertificato: '', numeroFISR: '',
     scadFISR: '', dataIscrizione: new Date().toISOString().split('T')[0],
-    note: '', noleggio: false, taglia: ''
+    note: '', noleggio: false, taglia: '', numeroGara: ''
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -310,7 +314,7 @@ function NuovoAtleta({ onBack, onSaved }) {
               a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
               driveFolderId,
               a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-              a.Note || ''
+              a.Note || '', a.Numero_Gara || ''
             ]
             await aggiornaRiga(SHEETS.ATLETI, idx, valori)
           }
@@ -372,7 +376,8 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
     scadFISR: atleta.Scad_FISR || '',
     dataIscrizione: atleta.Data_Iscrizione || '',
     note: atleta.Note || '',
-    noleggio: false, taglia: ''
+    noleggio: false, taglia: '',
+    numeroGara: atleta.Numero_Gara || ''
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -398,7 +403,7 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
         form.scadCertificato || '', form.scadFISR || '', form.numeroFISR || '',
         atleta.Drive_Folder_ID || '',
         atleta.Attivo || 'TRUE', form.dataIscrizione || '',
-        form.note || ''
+        form.note || '', form.numeroGara || ''
       ]
 
       await aggiornaRiga(SHEETS.ATLETI, idx, valori)
@@ -652,7 +657,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
             a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
             newFolderId,
             a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-            a.Note || ''
+            a.Note || '', a.Numero_Gara || ''
           ]
           await aggiornaRiga(SHEETS.ATLETI, idx, valori)
         }
@@ -742,6 +747,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       <div className="card">
         <InfoRow label="Data di nascita" value={formattaData(atleta.Data_Nascita)} />
         <InfoRow label="Codice fiscale"  value={atleta.Codice_Fiscale || '—'} />
+        <InfoRow label="Numero di gara"  value={atleta.Numero_Gara || '—'} />
         <InfoRow label="Iscritto dal"    value={formattaData(atleta.Data_Iscrizione)} />
       </div>
 
@@ -921,7 +927,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
                   atleta.Scad_Certificato || '', atleta.Scad_FISR || '', atleta.Numero_FISR || '',
                   atleta.Drive_Folder_ID || '',
                   'FALSE', atleta.Data_Iscrizione || '',
-                  atleta.Note || ''
+                  atleta.Note || '', atleta.Numero_Gara || ''
                 ]
                 await aggiornaRiga(SHEETS.ATLETI, idx, valori)
                 await scriviLog('Disattivazione', 'Atleta', `${atleta.Nome} ${atleta.Cognome}`)
