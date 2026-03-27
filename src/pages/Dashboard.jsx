@@ -174,7 +174,7 @@ export default function Dashboard() {
       <div className="section-title">Documenti utili</div>
       <div className="card" style={{ marginBottom: '16px' }}>
         <a
-          href={`${import.meta.env.BASE_URL}regolamento_tecnico_2025_2026.pdf`}
+          href="https://drive.google.com/file/d/1L2bEyGIqyYWRGTBD3XV6HtRAPCkk9YzE/view"
           target="_blank"
           rel="noreferrer"
           style={{
