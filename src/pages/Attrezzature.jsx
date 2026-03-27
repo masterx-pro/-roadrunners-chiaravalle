@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPattini, getAtleti, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, scriviLog, getStoricoPattinoById } from '../utils/sheetsApi'
+import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById } from '../utils/sheetsApi'
 import { formattaData } from '../utils/dateUtils'
 import { SHEETS } from '../config/google'
 import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
@@ -22,10 +22,14 @@ export default function Attrezzature() {
         <button className={`btn ${tab === 'ruote' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('ruote')} style={{ flex: 1 }}>
           ⚙️ Ruote
         </button>
+        <button className={`btn ${tab === 'numeri' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('numeri')} style={{ flex: 1 }}>
+          🔢 Numeri
+        </button>
       </div>
 
       {tab === 'pattini' && <PattiniView />}
       {tab === 'ruote' && <RuoteView />}
+      {tab === 'numeri' && <NumeriView />}
     </div>
   )
 }
@@ -613,5 +617,159 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
         </button>
       )}
     </div>
+  )
+}
+
+// ============================================================
+// NUMERI DI GARA
+// ============================================================
+
+function NumeriView() {
+  const [atleti, setAtleti] = useState([])
+  const [categorie, setCategorie] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [filtro, setFiltro] = useState('tutte')
+  const [editing, setEditing] = useState(null) // ID_Atleta in modifica
+  const [valoreEdit, setValoreEdit] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function ricarica() {
+    setLoading(true)
+    Promise.all([getAtleti(), getCategorie()]).then(([a, c]) => {
+      setAtleti(a); setCategorie(c); setLoading(false)
+    })
+  }
+
+  useEffect(() => { ricarica() }, [])
+
+  if (loading) return <div className="loading-center">Caricamento...</div>
+
+  const atletiAttivi = atleti.filter(a => isAttivo(a.Attivo))
+  const categorieAttive = categorie.filter(c => isAttivo(c.Attiva))
+
+  const atletiFiltrati = atletiAttivi
+    .filter(a => filtro === 'tutte' || a.Nome_Categoria === filtro)
+    .sort((a, b) => `${a.Cognome} ${a.Nome}`.localeCompare(`${b.Cognome} ${b.Nome}`))
+
+  const conNumero = atletiAttivi.filter(a => a.Numero_Gara?.trim())
+  const numeriUsati = conNumero.map(a => a.Numero_Gara.trim())
+  const duplicati = numeriUsati.filter((n, i) => numeriUsati.indexOf(n) !== i)
+  const numDuplicatiUnici = [...new Set(duplicati)].length
+
+  // Controllo duplicato per il valore in editing
+  const duplicatoDi = editing && valoreEdit.trim()
+    ? atletiAttivi.find(a => a.ID_Atleta !== editing && a.Numero_Gara?.trim() === valoreEdit.trim())
+    : null
+
+  async function handleSalva(idAtleta) {
+    setSaving(true)
+    try {
+      const numero = valoreEdit.trim()
+      await aggiornaNumeroGara(atleti, idAtleta, numero)
+      const a = atleti.find(at => at.ID_Atleta === idAtleta)
+      await scriviLog('Modifica', 'Numero gara', `${a.Nome} ${a.Cognome} → #${numero || '—'}`)
+      setEditing(null)
+      setValoreEdit('')
+      ricarica()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      {/* STATISTICHE */}
+      <div className="card" style={{ marginBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '14px' }}>
+            <span style={{ fontWeight: '600' }}>{conNumero.length}</span>
+            <span style={{ color: 'var(--text-secondary)' }}> con numero / {atletiAttivi.length} totale</span>
+          </div>
+          {numDuplicatiUnici > 0 && (
+            <span className="badge badge-danger">{numDuplicatiUnici} duplicat{numDuplicatiUnici > 1 ? 'i' : 'o'}</span>
+          )}
+        </div>
+      </div>
+
+      {/* FILTRO CATEGORIE */}
+      {categorieAttive.length > 0 && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+          <button
+            className={`btn ${filtro === 'tutte' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setFiltro('tutte')}
+            style={{ padding: '4px 10px', fontSize: '12px' }}
+          >Tutte</button>
+          {categorieAttive.map(c => (
+            <button
+              key={c.ID_Categoria}
+              className={`btn ${filtro === c.Nome ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFiltro(filtro === c.Nome ? 'tutte' : c.Nome)}
+              style={{ padding: '4px 10px', fontSize: '12px' }}
+            >{c.Nome}</button>
+          ))}
+        </div>
+      )}
+
+      {/* LISTA ATLETI */}
+      <div className="card">
+        {atletiFiltrati.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">🔢</div>
+            <div className="empty-state-text">Nessun atleta</div>
+          </div>
+        ) : (
+          atletiFiltrati.map(a => {
+            const isEditing = editing === a.ID_Atleta
+            const isDuplicato = !isEditing && a.Numero_Gara?.trim() && duplicati.includes(a.Numero_Gara.trim())
+
+            return (
+              <div key={a.ID_Atleta} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div className="atleta-avatar" style={{ width: '36px', height: '36px', fontSize: '13px', flexShrink: 0 }}>
+                  {a.Nome?.[0]}{a.Cognome?.[0]}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{a.Nome} {a.Cognome}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>{a.Nome_Categoria || '—'}</div>
+                </div>
+
+                {isEditing ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <input
+                        className="form-input"
+                        value={valoreEdit}
+                        onChange={e => setValoreEdit(e.target.value)}
+                        style={{ width: '60px', padding: '4px 8px', fontSize: '14px', textAlign: 'center' }}
+                        autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') handleSalva(a.ID_Atleta); if (e.key === 'Escape') { setEditing(null); setValoreEdit('') } }}
+                      />
+                      <button className="btn btn-primary" onClick={() => handleSalva(a.ID_Atleta)} disabled={saving} style={{ padding: '4px 8px', fontSize: '13px', lineHeight: 1 }}>✓</button>
+                      <button className="btn btn-ghost" onClick={() => { setEditing(null); setValoreEdit('') }} style={{ padding: '4px 8px', fontSize: '13px', lineHeight: 1 }}>✕</button>
+                    </div>
+                    {duplicatoDi && (
+                      <div style={{ color: 'var(--accent-warn)', fontSize: '11px' }}>
+                        Numero già assegnato a {duplicatoDi.Nome} {duplicatoDi.Cognome}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <span style={{
+                      fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700',
+                      color: a.Numero_Gara?.trim() ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      minWidth: '36px', textAlign: 'center'
+                    }}>
+                      {a.Numero_Gara?.trim() ? `#${a.Numero_Gara}` : '—'}
+                    </span>
+                    {isDuplicato && <span style={{ color: 'var(--accent-warn)', fontSize: '12px' }}>⚠️</span>}
+                    <button className="btn btn-ghost" onClick={() => { setEditing(a.ID_Atleta); setValoreEdit(a.Numero_Gara || '') }} style={{ padding: '4px 6px', fontSize: '13px', lineHeight: 1 }}>✏️</button>
+                  </div>
+                )}
+              </div>
+            )
+          })
+        )}
+      </div>
+    </>
   )
 }

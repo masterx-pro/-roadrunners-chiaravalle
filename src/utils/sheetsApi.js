@@ -99,6 +99,19 @@ export async function creaAtleta(atleta) {
   return id
 }
 
+export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
+  const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
+  if (idx === -1) throw new Error('Atleta non trovato')
+  const a = atleti[idx]
+  return aggiornaRiga(SHEETS.ATLETI, idx, [
+    a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita, a.Codice_Fiscale,
+    a.ID_Categoria, a.Genitore_Nome, a.Nome_Categoria || '',
+    a.Genitore_Telefono, a.Genitore_Email, a.Scad_Certificato,
+    a.Scad_FISR, a.Numero_FISR, a.Drive_Folder_ID, a.Attivo,
+    a.Data_Iscrizione, a.Note || '', nuovoNumero
+  ])
+}
+
 // ============================================================
 // PATTINI
 // ============================================================
