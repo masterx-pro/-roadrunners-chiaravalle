@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, listaDocumentiAtleta, caricaDocumento, scriviLog } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, listaDocumentiAtleta, caricaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -294,6 +294,31 @@ function NuovoAtleta({ onBack, onSaved }) {
     try {
       const idAtleta = await creaAtleta(form)
 
+      // Crea cartella Drive e aggiorna riga atleta
+      try {
+        const driveFolderId = await creaCartellaAtleta(`${form.nome}_${form.cognome}`, idAtleta)
+        if (driveFolderId) {
+          const tuttiAtleti = await getAtleti()
+          const idx = tuttiAtleti.findIndex(a => a.ID_Atleta === idAtleta)
+          if (idx !== -1) {
+            const a = tuttiAtleti[idx]
+            const valori = [
+              a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita,
+              a.Codice_Fiscale || '', a.ID_Categoria || '',
+              a.Genitore_Nome || '', a.Nome_Categoria || '',
+              a.Genitore_Telefono || '', a.Genitore_Email || '',
+              a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
+              driveFolderId,
+              a.Attivo || 'TRUE', a.Data_Iscrizione || '',
+              a.Note || ''
+            ]
+            await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+          }
+        }
+      } catch (err) {
+        console.error('Errore creazione cartella Drive:', err)
+      }
+
       if (form.noleggio && form.taglia) {
         const pattini = await getPattini()
         const libero = pattini.find(p => !p.ID_Atleta && p.Taglia === form.taglia && p.Stato !== 'Rotto')
@@ -527,33 +552,78 @@ function AtletaRow({ atleta, onClick }) {
 function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattivato }) {
   const [documenti, setDocumenti] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUploading] = useState(null) // null o nome categoria
   const [confermaDisattiva, setConfermaDisattiva] = useState(false)
   const [disattivando, setDisattivando] = useState(false)
+  const [folderId, setFolderId] = useState(atleta.Drive_Folder_ID || '')
+  const [creandoCartella, setCreandoCartella] = useState(false)
+
+  const CATEGORIE_DOC = [
+    { key: 'certificato_medico', label: 'Certificato medico', icona: '🏥' },
+    { key: 'tessera_fisr', label: 'Tessera FISR', icona: '🪪' },
+    { key: 'liberatoria_privacy', label: 'Liberatoria privacy', icona: '📝' },
+    { key: 'altro', label: 'Altro', icona: '📎' },
+  ]
 
   const pattiniAtleta = pattini.filter(p => p.ID_Atleta === atleta.ID_Atleta)
   const statoCert = statoScadenza(atleta.Scad_Certificato)
   const statoFISR = statoScadenza(atleta.Scad_FISR)
 
   useEffect(() => {
-    if (atleta.Drive_Folder_ID) {
+    if (folderId) {
       setLoadingDocs(true)
-      listaDocumentiAtleta(atleta.Drive_Folder_ID)
+      listaDocumentiAtleta(folderId)
         .then(setDocumenti)
         .finally(() => setLoadingDocs(false))
     }
-  }, [atleta.Drive_Folder_ID])
+  }, [folderId])
 
-  async function handleCaricaDoc(e) {
-    const file = e.target.files[0]
-    if (!file || !atleta.Drive_Folder_ID) return
-    setUploading(true)
+  function trovaDocPerCategoria(catKey) {
+    return documenti.find(d => d.name?.toLowerCase().startsWith(catKey))
+  }
+
+  async function handleCreaCartella() {
+    setCreandoCartella(true)
     try {
-      await caricaDocumento(file, file.name, atleta.Drive_Folder_ID)
-      const docs = await listaDocumentiAtleta(atleta.Drive_Folder_ID)
+      const newFolderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
+      if (newFolderId) {
+        const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
+        if (idx !== -1) {
+          const a = atleti[idx]
+          const valori = [
+            a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita,
+            a.Codice_Fiscale || '', a.ID_Categoria || '',
+            a.Genitore_Nome || '', a.Nome_Categoria || '',
+            a.Genitore_Telefono || '', a.Genitore_Email || '',
+            a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
+            newFolderId,
+            a.Attivo || 'TRUE', a.Data_Iscrizione || '',
+            a.Note || ''
+          ]
+          await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+        }
+        setFolderId(newFolderId)
+      }
+    } catch (err) {
+      console.error('Errore creazione cartella:', err)
+    } finally {
+      setCreandoCartella(false)
+    }
+  }
+
+  async function handleCaricaDocCategoria(catKey, e) {
+    const file = e.target.files[0]
+    if (!file || !folderId) return
+    setUploading(catKey)
+    try {
+      const ext = file.name.split('.').pop() || 'pdf'
+      const anno = new Date().getFullYear()
+      const nomeFile = `${catKey}_${anno}.${ext}`
+      await caricaDocumento(file, nomeFile, folderId)
+      const docs = await listaDocumentiAtleta(folderId)
       setDocumenti(docs)
     } finally {
-      setUploading(false)
+      setUploading(null)
     }
   }
 
@@ -647,37 +717,52 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       {/* DOCUMENTI */}
       <div className="section-title">Documenti</div>
       <div className="card">
-        {!atleta.Drive_Folder_ID ? (
-          <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Cartella Drive non configurata
+        {!folderId ? (
+          <div style={{ textAlign: 'center', padding: '8px 0' }}>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
+              Cartella Drive non configurata
+            </div>
+            <button className="btn btn-primary btn-full" onClick={handleCreaCartella} disabled={creandoCartella}>
+              {creandoCartella ? 'Creazione...' : 'Crea cartella documenti'}
+            </button>
           </div>
         ) : loadingDocs ? (
           <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
         ) : (
-          <>
-            {documenti.map(doc => (
-              <a
-                key={doc.id}
-                href={doc.webViewLink}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '10px 0', borderBottom: '1px solid var(--border)',
-                  color: 'var(--text-primary)', textDecoration: 'none'
-                }}
-              >
-                <span>📄</span>
-                <span style={{ fontSize: '14px' }}>{doc.name}</span>
-              </a>
-            ))}
-            <label style={{ display: 'block', marginTop: '12px' }}>
-              <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={handleCaricaDoc} />
-              <span className="btn btn-ghost btn-full" style={{ display: 'flex' }}>
-                {uploading ? 'Caricamento...' : '+ Carica documento'}
-              </span>
-            </label>
-          </>
+          CATEGORIE_DOC.map((cat, i) => {
+            const doc = trovaDocPerCategoria(cat.key)
+            return (
+              <div key={cat.key} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: i < CATEGORIE_DOC.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span style={{ fontSize: '18px', flexShrink: 0 }}>{cat.icona}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{cat.label}</div>
+                  {doc ? (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.name}</div>
+                  ) : (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Non caricato</div>
+                  )}
+                </div>
+                {doc ? (
+                  <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                    <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px', textDecoration: 'none' }}>Apri</a>
+                    <label style={{ cursor: 'pointer' }}>
+                      <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
+                      <span className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px' }}>
+                        {uploading === cat.key ? '...' : 'Sostituisci'}
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <label style={{ cursor: 'pointer', flexShrink: 0 }}>
+                    <input type="file" accept="image/*,application/pdf" style={{ display: 'none' }} onChange={e => handleCaricaDocCategoria(cat.key, e)} />
+                    <span className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '12px' }}>
+                      {uploading === cat.key ? '...' : 'Carica'}
+                    </span>
+                  </label>
+                )}
+              </div>
+            )
+          })
         )}
       </div>
 
