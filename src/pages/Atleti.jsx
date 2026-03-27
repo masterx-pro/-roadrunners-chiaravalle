@@ -57,9 +57,11 @@ export default function Atleti() {
     return (
       <SchedaAtleta
         atleta={atletaSelezionato}
+        atleti={atleti}
         pattini={pattini}
         onBack={() => { setAtletaSelezionato(null); setVista('lista') }}
         onModifica={() => setVista('modifica')}
+        onDisattivato={() => { setAtletaSelezionato(null); setVista('lista'); ricarica() }}
       />
     )
   }
@@ -522,10 +524,12 @@ function AtletaRow({ atleta, onClick }) {
 // SCHEDA ATLETA
 // ============================================================
 
-function SchedaAtleta({ atleta, pattini, onBack, onModifica }) {
+function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattivato }) {
   const [documenti, setDocumenti] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [confermaDisattiva, setConfermaDisattiva] = useState(false)
+  const [disattivando, setDisattivando] = useState(false)
 
   const pattiniAtleta = pattini.filter(p => p.ID_Atleta === atleta.ID_Atleta)
   const statoCert = statoScadenza(atleta.Scad_Certificato)
@@ -676,6 +680,47 @@ function SchedaAtleta({ atleta, pattini, onBack, onModifica }) {
           </>
         )}
       </div>
+
+      {/* DISATTIVA ATLETA */}
+      {confermaDisattiva ? (
+        <div className="card" style={{ borderColor: 'rgba(232,51,74,0.4)', marginTop: '16px', textAlign: 'center' }}>
+          <div style={{ color: '#FF6B7A', fontWeight: '600', marginBottom: '8px' }}>Disattivare {atleta.Nome} {atleta.Cognome}?</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>L'atleta non apparirà più nella lista ma rimarrà nel foglio.</div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-ghost" onClick={() => setConfermaDisattiva(false)} style={{ flex: 1 }}>Annulla</button>
+            <button className="btn btn-primary" disabled={disattivando} onClick={async () => {
+              setDisattivando(true)
+              try {
+                const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
+                if (idx === -1) throw new Error('Atleta non trovato')
+                const valori = [
+                  atleta.ID_Atleta, atleta.Nome, atleta.Cognome, atleta.Data_Nascita,
+                  atleta.Codice_Fiscale || '', atleta.ID_Categoria || '',
+                  atleta.Genitore_Nome || '', atleta.Nome_Categoria || '',
+                  atleta.Genitore_Telefono || '', atleta.Genitore_Email || '',
+                  atleta.Scad_Certificato || '', atleta.Scad_FISR || '', atleta.Numero_FISR || '',
+                  atleta.Drive_Folder_ID || '',
+                  'FALSE', atleta.Data_Iscrizione || '',
+                  atleta.Note || ''
+                ]
+                await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+                await scriviLog('Disattivazione', 'Atleta', `${atleta.Nome} ${atleta.Cognome}`)
+                onDisattivato()
+              } catch (err) {
+                console.error(err)
+              } finally {
+                setDisattivando(false)
+              }
+            }} style={{ flex: 1, background: '#E8334A' }}>
+              {disattivando ? 'Disattivazione...' : 'Disattiva'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn btn-ghost btn-full" onClick={() => setConfermaDisattiva(true)} style={{ marginTop: '16px', marginBottom: '24px', color: '#FF6B7A' }}>
+          Disattiva atleta
+        </button>
+      )}
     </div>
   )
 }

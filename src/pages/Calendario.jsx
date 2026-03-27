@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -37,6 +37,16 @@ export default function Calendario() {
   }, [])
 
   if (loading) return <div className="loading-center">Caricamento...</div>
+
+  if (vista?.tipo === 'nuovoEvento') {
+    return <NuovoEvento onBack={() => setVista(null)} onSaved={() => {
+      setVista(null)
+      setLoading(true)
+      Promise.all([getSlotFissi(), getEventiSpeciali(), getAtleti()]).then(([s, e, a]) => {
+        setSlotFissi(s); setEventi(e); setAtleti(a); setLoading(false)
+      })
+    }} />
+  }
 
   if (vista?.tipo === 'presenze') {
     return <RegistroPresenze evento={vista.dati} atleti={atleti} onBack={() => setVista(null)} />
@@ -130,7 +140,10 @@ export default function Calendario() {
 
       {tab === 'eventi' && (
         <>
-          <div className="section-title">Prossimi eventi</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="section-title" style={{ marginBottom: 0 }}>Prossimi eventi</div>
+            <button className="btn btn-primary" onClick={() => setVista({ tipo: 'nuovoEvento' })} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+          </div>
           <div className="card">
             {prossimiEventi.length === 0 ? (
               <div className="empty-state">
@@ -488,6 +501,150 @@ function RegistroPresenze({ evento, atleti, onBack }) {
           {saving ? 'Salvataggio...' : `Salva tutte (${presentiCount} presenti)`}
         </button>
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// NUOVO EVENTO
+// ============================================================
+
+function NuovoEvento({ onBack, onSaved }) {
+  const [categorie, setCategorie] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [successo, setSuccesso] = useState(false)
+  const [errore, setErrore] = useState(null)
+  const [form, setForm] = useState({
+    titolo: '', dataInizio: '', oraInizio: '', dataFine: '', oraFine: '',
+    tipo: 'Gara', luogo: '', idCategoria: '', scadIscrizione: '',
+    scadPagamento: '', dataConvocati: '', documentiRichiesti: '', note: ''
+  })
+
+  useEffect(() => { getCategorie().then(setCategorie) }, [])
+
+  const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
+
+  async function handleSalva() {
+    if (!form.titolo.trim()) {
+      setErrore('Il titolo è obbligatorio')
+      return
+    }
+    setSaving(true)
+    setErrore(null)
+    try {
+      await creaEvento(form)
+      setSuccesso(true)
+      setTimeout(() => onSaved(), 1500)
+    } catch (err) {
+      console.error(err)
+      setErrore('Errore durante il salvataggio')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (successo) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '12px' }}>
+        <div style={{ fontSize: '48px' }}>✅</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', textTransform: 'uppercase', color: 'var(--accent-ok)' }}>Evento creato</div>
+      </div>
+    )
+  }
+
+  const categorieAttive = categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()))
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Nuovo Evento</h1>
+      </div>
+
+      <div className="section-title">Informazioni</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Titolo *</label>
+          <input className="form-input" value={form.titolo} onChange={e => update('titolo', e.target.value)} placeholder="Nome evento" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Tipo</label>
+          <select className="form-input" value={form.tipo} onChange={e => update('tipo', e.target.value)}>
+            <option>Gara</option><option>Trasferta</option><option>Altro</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Luogo</label>
+          <input className="form-input" value={form.luogo} onChange={e => update('luogo', e.target.value)} placeholder="es. Palaghiaccio Milano" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Categoria (vuoto = tutte)</label>
+          <select className="form-input" value={form.idCategoria} onChange={e => update('idCategoria', e.target.value)}>
+            <option value="">— Tutte —</option>
+            {categorieAttive.map(c => (
+              <option key={c.ID_Categoria} value={c.ID_Categoria}>{c.Nome}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="section-title">Date e orari</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Data inizio</label>
+          <input className="form-input" type="date" value={form.dataInizio} onChange={e => update('dataInizio', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Ora inizio</label>
+          <input className="form-input" type="time" value={form.oraInizio} onChange={e => update('oraInizio', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data fine</label>
+          <input className="form-input" type="date" value={form.dataFine} onChange={e => update('dataFine', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Ora fine</label>
+          <input className="form-input" type="time" value={form.oraFine} onChange={e => update('oraFine', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="section-title">Scadenze</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Scadenza iscrizione</label>
+          <input className="form-input" type="date" value={form.scadIscrizione} onChange={e => update('scadIscrizione', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Scadenza pagamento</label>
+          <input className="form-input" type="date" value={form.scadPagamento} onChange={e => update('scadPagamento', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data convocati</label>
+          <input className="form-input" type="date" value={form.dataConvocati} onChange={e => update('dataConvocati', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="section-title">Extra</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Documenti richiesti</label>
+          <input className="form-input" value={form.documentiRichiesti} onChange={e => update('documentiRichiesti', e.target.value)} placeholder="es. Certificato medico, tessera FISR" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note</label>
+          <textarea className="form-input" rows="3" value={form.note} onChange={e => update('note', e.target.value)} style={{ resize: 'vertical' }} />
+        </div>
+      </div>
+
+      {errore && (
+        <div className="card" style={{ borderColor: 'rgba(232,51,74,0.4)', marginTop: '8px' }}>
+          <div style={{ color: '#FF6B7A', fontSize: '14px', textAlign: 'center' }}>{errore}</div>
+        </div>
+      )}
+
+      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginTop: '12px', marginBottom: '24px' }}>
+        {saving ? 'Salvataggio...' : 'Crea evento'}
+      </button>
     </div>
   )
 }

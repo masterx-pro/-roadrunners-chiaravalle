@@ -363,6 +363,19 @@ export async function aggiornaIscrittGara(idEvento, idAtleta, iscritto) {
   await scriviLog('Iscrizione gara', 'Gara', `atleta ${idAtleta} evento ${idEvento}`)
 }
 
+export async function creaEvento(evento) {
+  const id = `EV-${String(Date.now()).slice(-6)}`
+  await aggiungiRiga(SHEETS.EVENTI_SPECIALI, [
+    id, evento.titolo, evento.dataInizio, evento.oraInizio,
+    evento.dataFine, evento.oraFine, evento.tipo, evento.luogo,
+    evento.idCategoria || '', evento.scadIscrizione || '',
+    evento.scadPagamento || '', evento.dataConvocati || '',
+    evento.documentiRichiesti || '', '', 'Da pagare', evento.note || ''
+  ])
+  await scriviLog('Nuovo', 'Evento', `${evento.titolo} — ${evento.dataInizio}`)
+  return id
+}
+
 export async function aggiornaStatoPagamentoGara(idEvento, stato) {
   const eventi = await leggiSheet(SHEETS.EVENTI_SPECIALI)
   const idx = eventi.findIndex(e => e.ID_Evento === idEvento)
