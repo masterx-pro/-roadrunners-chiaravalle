@@ -133,9 +133,11 @@ export async function creaAtleta(atleta) {
 export async function aggiornaCategorieBatch(atleti, categorie) {
   const oggi = new Date()
   let aggiornati = 0
+  let debugFatto = false
 
   if (categorie.length > 0) {
     console.log('Chiavi categoria:', Object.keys(categorie[0]))
+    console.log('Prima categoria completa:', JSON.stringify(categorie[0]))
   }
 
   const categorieAttive = categorie.filter(c =>
@@ -155,10 +157,31 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
     }
 
     const sesso = atleta.Sesso?.trim().toUpperCase()
+
+    // DEBUG primo atleta
+    if (!debugFatto) {
+      console.log('=== DEBUG PRIMO ATLETA ===')
+      console.log('Atleta:', atleta.Nome, atleta.Cognome)
+      console.log('Data nascita:', atleta.Data_Nascita, '→ età:', eta)
+      console.log('Sesso:', sesso)
+      console.log('ID_Categoria attuale:', atleta.ID_Categoria)
+
+      categorie.forEach((c, idx) => {
+        const catSesso = (c.Sesso || '').trim().toUpperCase()
+        const etaMinRaw = c['Età_Min'] || c.Eta_Min || ''
+        const etaMaxRaw = c['Età_Max'] || c.Eta_Max || ''
+        const etaMin = parseInt(etaMinRaw) || 0
+        const etaMax = parseInt(etaMaxRaw) || 99
+        const match = catSesso === sesso && eta >= etaMin && eta <= etaMax
+        console.log(`Cat ${idx}: ${c.Nome} | Sesso:${catSesso} | Min:${etaMinRaw}(${etaMin}) Max:${etaMaxRaw}(${etaMax}) | Match:${match}`)
+      })
+      debugFatto = true
+    }
+
     const categoriaCorretta = categorieAttive.find(c => {
       const catSesso = (c.Sesso || '').trim().toUpperCase()
-      const etaMinRaw = c.Eta_Min || c['Età_Min'] || c['eta_min'] || c['ETA_MIN'] || ''
-      const etaMaxRaw = c.Eta_Max || c['Età_Max'] || c['eta_max'] || c['ETA_MAX'] || ''
+      const etaMinRaw = c['Età_Min'] || c.Eta_Min || c['eta_min'] || c['ETA_MIN'] || ''
+      const etaMaxRaw = c['Età_Max'] || c.Eta_Max || c['eta_max'] || c['ETA_MAX'] || ''
       const etaMin = parseInt(etaMinRaw) || 0
       const etaMax = parseInt(etaMaxRaw) || 99
       return catSesso === sesso && eta >= etaMin && eta <= etaMax
@@ -166,7 +189,7 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
 
     if (!categoriaCorretta) continue
 
-    const idCategoriaCorretta = categoriaCorretta.ID_Categoria || Object.values(categoriaCorretta)[0]
+    const idCategoriaCorretta = categoriaCorretta.ID_Categoria || ''
     if (!idCategoriaCorretta) continue
     if ((atleta.ID_Categoria || '').trim() === idCategoriaCorretta) continue
 
@@ -179,14 +202,17 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
       atleta.ID_Categoria = idCategoriaCorretta
       atleta.Nome_Categoria = nomeCategoria
       aggiornati++
+      console.log('AGGIORNATO:', atleta.Nome, atleta.Cognome, '→', nomeCategoria)
     } catch (err) {
-      console.error('Errore aggiornamento categoria per', atleta.Nome, atleta.Cognome, err)
+      console.error('Errore aggiornamento:', atleta.Nome, err)
     }
   }
 
   if (aggiornati > 0) {
     await scriviLog('Auto', 'Categorie', `${aggiornati} atleti aggiornati per età`)
   }
+  console.log('Batch categorie completato. Aggiornati:', aggiornati)
+
   return aggiornati
 }
 
