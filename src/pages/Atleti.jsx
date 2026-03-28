@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -711,8 +711,6 @@ function GestioneCategorie({ onBack }) {
 
 function AtletaRow({ atleta, onClick }) {
   const iniziali = `${atleta.Nome?.[0] ?? ''}${atleta.Cognome?.[0] ?? ''}`
-  const statoCert = statoScadenza(atleta.Scad_Certificato)
-  const haAlert = statoCert === 'scaduto' || statoCert === 'urgente' || statoCert === 'in_scadenza' || statoCert === 'mancante'
 
   return (
     <div className="atleta-row" onClick={onClick}>
@@ -721,11 +719,26 @@ function AtletaRow({ atleta, onClick }) {
         <div className="atleta-nome">{atleta.Nome} {atleta.Cognome}</div>
         <div className="atleta-sub">{atleta.Nome_Categoria || '—'}</div>
       </div>
-      {haAlert && (
-        <span className={`badge ${statoCert === 'scaduto' ? 'badge-danger' : statoCert === 'urgente' ? 'badge-urgente' : statoCert === 'in_scadenza' ? 'badge-warn' : 'badge-danger'}`}>
-          {statoCert === 'mancante' ? '!' : statoCert === 'scaduto' ? 'Scaduto' : `${giorniAllaScadenza(atleta.Scad_Certificato)}gg`}
-        </span>
-      )}
+      {(() => {
+        const badges = []
+        const statoCert = statoScadenza(atleta.Scad_Certificato)
+        const statoFisr = statoScadenza(atleta.Scad_FISR)
+        const giorniCert = giorniAllaScadenza(atleta.Scad_Certificato)
+        const giorniFisr = giorniAllaScadenza(atleta.Scad_FISR)
+
+        if (statoCert === 'scaduto') badges.push({ label: 'Scaduto Cert.', classe: 'badge-danger' })
+        else if (statoCert === 'urgente') badges.push({ label: `${giorniCert}gg Cert.`, classe: 'badge-urgente' })
+        else if (statoCert === 'in_scadenza') badges.push({ label: `${giorniCert}gg Cert.`, classe: 'badge-warn' })
+        else if (statoCert === 'mancante') badges.push({ label: 'No Cert.', classe: 'badge-danger' })
+
+        if (statoFisr === 'scaduto') badges.push({ label: 'Scaduto FISR', classe: 'badge-danger' })
+        else if (statoFisr === 'urgente') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-urgente' })
+        else if (statoFisr === 'in_scadenza') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-warn' })
+
+        return badges.map((b, i) => (
+          <span key={i} className={`badge ${b.classe}`} style={{ fontSize: '11px', marginLeft: '4px' }}>{b.label}</span>
+        ))
+      })()}
       <ChevronIcon />
     </div>
   )
@@ -785,6 +798,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
   const [nuovoDocNome, setNuovoDocNome] = useState('')
   const [nuovoDocFile, setNuovoDocFile] = useState(null)
   const [eliminando, setEliminando] = useState(null)
+  const [sottoVista, setSottoVista] = useState(null) // 'scadenze' | 'noleggio' | 'pagamenti'
 
   const CATEGORIE_DOC = [
     { key: 'certificato_medico', label: 'Certificato medico', icona: '🏥' },
@@ -890,6 +904,34 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     return <span className="badge badge-danger">Mancante</span>
   }
 
+  if (sottoVista === 'scadenze') {
+    return <ModificaScadenze
+      atleta={atleta}
+      atleti={atleti}
+      onBack={() => setSottoVista(null)}
+      onSaved={() => { setSottoVista(null); onDisattivato() }}
+    />
+  }
+
+  if (sottoVista === 'noleggio' && pattiniAtleta.length > 0) {
+    return <GestioneNoleggio
+      atleta={atleta}
+      pattino={pattiniAtleta[0]}
+      atleti={atleti}
+      onBack={() => setSottoVista(null)}
+      onSaved={() => { setSottoVista(null); onDisattivato() }}
+    />
+  }
+
+  if (sottoVista === 'pagamenti') {
+    return <GestionePagamenti
+      atleta={atleta}
+      atleti={atleti}
+      onBack={() => setSottoVista(null)}
+      onSaved={() => { setSottoVista(null); onDisattivato() }}
+    />
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -932,8 +974,11 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       </div>
 
       {/* SCADENZE */}
-      <div className="section-title">Scadenze</div>
-      <div className="card">
+      <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Scadenze</span>
+        <span style={{ fontSize: '14px' }}>✏️</span>
+      </div>
+      <div className="card" onClick={() => setSottoVista('scadenze')} style={{ cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div style={{ fontWeight: '600', fontSize: '14px' }}>Certificato medico</div>
@@ -955,8 +1000,11 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       {/* PATTINI */}
       {pattiniAtleta.length > 0 && (
         <>
-          <div className="section-title">Pattini in noleggio</div>
-          <div className="card">
+          <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Pattini in noleggio</span>
+            <span style={{ fontSize: '14px' }}>✏️</span>
+          </div>
+          <div className="card" onClick={() => setSottoVista('noleggio')} style={{ cursor: 'pointer' }}>
             {pattiniAtleta.map(p => (
               <div key={p.ID_Pattino} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                 <div>
@@ -973,7 +1021,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       )}
 
       {/* PAGAMENTI */}
-      <SezionePagamenti atleta={atleta} pattini={pattiniAtleta} />
+      <SezionePagamenti atleta={atleta} pattini={pattiniAtleta} onTap={() => setSottoVista('pagamenti')} />
 
       {/* DOCUMENTI */}
       <div className="section-title">Documenti</div>
@@ -1117,10 +1165,342 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
 }
 
 // ============================================================
-// SEZIONE PAGAMENTI
+// MODIFICA SCADENZE
 // ============================================================
 
-function SezionePagamenti({ atleta, pattini }) {
+function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
+  const [scadCert, setScadCert] = useState(atleta.Scad_Certificato || '')
+  const [scadFISR, setScadFISR] = useState(atleta.Scad_FISR || '')
+  const [numeroFISR, setNumeroFISR] = useState(atleta.Numero_FISR || '')
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(null)
+
+  async function handleSalva() {
+    setSaving(true)
+    try {
+      const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
+      if (idx === -1) throw new Error('Atleta non trovato')
+      const valori = buildAtletaRow(atleta, {
+        Scad_Certificato: scadCert,
+        Scad_FISR: scadFISR,
+        Numero_FISR: numeroFISR
+      })
+      await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+      await scriviLog('Modifica', 'Scadenze', `${atleta.Nome} ${atleta.Cognome}`)
+      onSaved()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleUploadDoc(tipo, file) {
+    if (!file) return
+    setUploading(tipo)
+    try {
+      let folderId = atleta.Drive_Folder_ID
+      if (!folderId) {
+        folderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
+        const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
+        await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Drive_Folder_ID: folderId }))
+      }
+      const fileFinale = await comprimiImmagine(file)
+      const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
+      const nomeFile = tipo === 'certificato'
+        ? `certificato_medico.${ext}`
+        : `tessera_fisr.${ext}`
+      await caricaDocumento(fileFinale, nomeFile, folderId)
+      alert(`${tipo === 'certificato' ? 'Certificato medico' : 'Tessera FISR'} caricato ✓`)
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante il caricamento')
+    } finally {
+      setUploading(null)
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Scadenze</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', marginBottom: '12px' }}>
+          {atleta.Nome} {atleta.Cognome}
+        </div>
+      </div>
+
+      <div className="section-title">Certificato medico</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="form-group">
+          <label className="form-label">Data scadenza</label>
+          <input className="form-input" type="date" value={scadCert} onChange={e => setScadCert(e.target.value)} />
+        </div>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          onChange={(e) => handleUploadDoc('certificato', e.target.files[0])}
+          style={{ display: 'none' }}
+          id="upload-cert"
+        />
+        <label htmlFor="upload-cert" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
+          {uploading === 'certificato' ? 'Caricamento...' : '📎 Carica certificato medico (foto o file)'}
+        </label>
+      </div>
+
+      <div className="section-title">Tessera FISR</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="form-group">
+          <label className="form-label">Numero tessera</label>
+          <input className="form-input" value={numeroFISR} onChange={e => setNumeroFISR(e.target.value)} placeholder="Numero FISR" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data scadenza</label>
+          <input className="form-input" type="date" value={scadFISR} onChange={e => setScadFISR(e.target.value)} />
+        </div>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          onChange={(e) => handleUploadDoc('fisr', e.target.files[0])}
+          style={{ display: 'none' }}
+          id="upload-fisr"
+        />
+        <label htmlFor="upload-fisr" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
+          {uploading === 'fisr' ? 'Caricamento...' : '📎 Carica tessera FISR (foto o file)'}
+        </label>
+      </div>
+
+      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginBottom: '24px' }}>
+        {saving ? 'Salvataggio...' : 'Salva scadenze'}
+      </button>
+    </div>
+  )
+}
+
+// ============================================================
+// GESTIONE NOLEGGIO
+// ============================================================
+
+function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
+  const [dataInizio, setDataInizio] = useState(pattino.Data_Inizio_Noleggio || '')
+  const [saving, setSaving] = useState(false)
+
+  const mesiNoleggio = dataInizio ? (() => {
+    const inizio = new Date(dataInizio)
+    const oggi = new Date()
+    const mesi = (oggi.getFullYear() - inizio.getFullYear()) * 12 + (oggi.getMonth() - inizio.getMonth())
+    return Math.max(1, mesi)
+  })() : 0
+
+  const costoMensile = PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
+  const totale = mesiNoleggio * costoMensile
+
+  async function handleSalva() {
+    setSaving(true)
+    try {
+      const pattini = await getPattini()
+      const idx = pattini.findIndex(p => p.ID_Pattino === pattino.ID_Pattino)
+      if (idx === -1) throw new Error('Pattino non trovato')
+      await aggiornaPattino(idx, { ...pattino, Data_Inizio_Noleggio: dataInizio })
+      await scriviLog('Modifica', 'Noleggio', `Data inizio aggiornata per ${atleta.Nome} ${atleta.Cognome}`)
+      onSaved()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRestituzione() {
+    if (!confirm('Confermi la restituzione del pattino?')) return
+    setSaving(true)
+    try {
+      await restituisciPattino(pattino.ID_Pattino)
+      onSaved()
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Noleggio</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700' }}>
+          {pattino.Marca || pattino.ID_Pattino} — Taglia {pattino.Taglia}
+        </div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
+          Assegnato a {atleta.Nome} {atleta.Cognome}
+        </div>
+      </div>
+
+      <div className="section-title">Dettagli noleggio</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="form-group">
+          <label className="form-label">Data inizio noleggio</label>
+          <input className="form-input" type="date" value={dataInizio} onChange={e => setDataInizio(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>Durata</span>
+          <span style={{ fontWeight: '600' }}>{mesiNoleggio} mesi</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>Importo dovuto</span>
+          <span style={{ fontWeight: '600', color: 'var(--accent)' }}>€{totale} (€{costoMensile}/mese)</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
+          <span style={{ color: 'var(--text-secondary)' }}>Stato pagamento</span>
+          <span className={`badge ${pattino.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
+            {pattino.Stato_Pagamento || 'Da pagare'}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <button className="btn btn-primary" onClick={handleSalva} disabled={saving} style={{ flex: 1 }}>
+          {saving ? 'Salvataggio...' : 'Salva modifiche'}
+        </button>
+        <button className="btn btn-ghost" onClick={handleRestituzione} disabled={saving} style={{ flex: 1, color: 'var(--accent)' }}>
+          🔄 Restituisci
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// GESTIONE PAGAMENTI (vista completa)
+// ============================================================
+
+function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
+  const [pagamenti, setPagamenti] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getPagamentiAtleta(atleta.ID_Atleta).then(p => { setPagamenti(p); setLoading(false) })
+  }, [atleta.ID_Atleta])
+
+  async function togglePagato(pag) {
+    const nuovoStato = pag.Stato === 'Pagato' ? 'Da pagare' : 'Pagato'
+    const dataPag = nuovoStato === 'Pagato' ? new Date().toISOString().split('T')[0] : ''
+    await aggiornaPagamento(pag.ID_Pagamento, { Stato: nuovoStato, Data_Pagamento: dataPag })
+    setPagamenti(prev => prev.map(p =>
+      p.ID_Pagamento === pag.ID_Pagamento
+        ? { ...p, Stato: nuovoStato, Data_Pagamento: dataPag }
+        : p
+    ))
+  }
+
+  async function handleUploadRicevuta(pag, file) {
+    if (!file) return
+    let folderId = atleta.Drive_Folder_ID
+    if (!folderId) {
+      folderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
+      const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
+      await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Drive_Folder_ID: folderId }))
+    }
+    const fileFinale = await comprimiImmagine(file)
+    const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
+    const nomeFile = `ricevuta_${pag.Tipo}_${pag.ID_Pagamento}.${ext}`
+    await caricaDocumento(fileFinale, nomeFile, folderId)
+    alert('Ricevuta caricata ✓')
+  }
+
+  if (loading) return <div className="loading-center">Caricamento pagamenti...</div>
+
+  const totDovuto = pagamenti.reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
+  const totPagato = pagamenti.filter(p => p.Stato === 'Pagato').reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
+  const saldo = totDovuto - totPagato
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Pagamenti</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700' }}>
+          {atleta.Nome} {atleta.Cognome}
+        </div>
+      </div>
+
+      {/* Riepilogo */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <div className="card" style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700' }}>€{totDovuto}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase' }}>Totale dovuto</div>
+        </div>
+        <div className="card" style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: saldo > 0 ? '#FCD34D' : 'var(--accent-ok)' }}>€{saldo}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textTransform: 'uppercase' }}>{saldo > 0 ? 'Da saldare' : 'In pari'}</div>
+        </div>
+      </div>
+
+      {/* Lista pagamenti */}
+      <div className="section-title">Dettaglio</div>
+      <div className="card">
+        {pagamenti.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">💰</div>
+            <div className="empty-state-text">Nessun pagamento registrato</div>
+          </div>
+        ) : (
+          pagamenti.map(p => (
+            <div key={p.ID_Pagamento} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{p.Descrizione}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
+                    €{p.Importo}{p.Data_Scadenza ? ` · Scad. ${p.Data_Scadenza}` : ''}
+                    {p.Data_Pagamento && ` · Pagato il ${p.Data_Pagamento}`}
+                  </div>
+                </div>
+                <button
+                  className={`badge ${p.Stato === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}
+                  style={{ cursor: 'pointer', border: 'none', fontSize: '13px' }}
+                  onClick={(e) => { e.stopPropagation(); togglePagato(p) }}
+                >
+                  {p.Stato === 'Pagato' ? 'Pagato ✓' : 'Da pagare'}
+                </button>
+              </div>
+              <div style={{ marginTop: '8px' }}>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  onChange={(e) => handleUploadRicevuta(p, e.target.files[0])}
+                  style={{ display: 'none' }}
+                  id={`upload-ric-${p.ID_Pagamento}`}
+                />
+                <label htmlFor={`upload-ric-${p.ID_Pagamento}`} className="btn btn-ghost" style={{ fontSize: '12px', cursor: 'pointer', padding: '4px 8px' }}>
+                  📎 Carica ricevuta
+                </label>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// SEZIONE PAGAMENTI (riepilogo nella scheda)
+// ============================================================
+
+function SezionePagamenti({ atleta, pattini, onTap }) {
   const [pagamenti, setPagamenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
@@ -1157,8 +1537,11 @@ function SezionePagamenti({ atleta, pattini }) {
 
   return (
     <>
-      <div className="section-title">Pagamenti</div>
-      <div className="card">
+      <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Pagamenti</span>
+        <span style={{ fontSize: '14px' }}>✏️</span>
+      </div>
+      <div className="card" onClick={onTap} style={{ cursor: 'pointer' }}>
         {loading ? (
           <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
         ) : (
