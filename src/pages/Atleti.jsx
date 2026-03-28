@@ -174,8 +174,8 @@ function calcolaCategoriaSuggerita(dataNascita, sesso, categorie) {
 
   const cat = categorie.find(c =>
     c.Sesso === sesso &&
-    parseInt(c.Eta_Min) <= eta &&
-    eta <= parseInt(c.Eta_Max) &&
+    parseInt(c.Età_Min) <= eta &&
+    eta <= parseInt(c.Età_Max) &&
     ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
   )
   return cat || null
@@ -566,8 +566,8 @@ function GestioneCategorie({ onBack }) {
       idCategoria: c.ID_Categoria,
       nome: c.Nome || '',
       fasciaEta: c.Fascia_Eta || '',
-      etaMin: c.Eta_Min || '',
-      etaMax: c.Eta_Max || '',
+      etaMin: c.Età_Min || '',
+      etaMax: c.Età_Max || '',
       sesso: c.Sesso || '',
       tipiGara: c.Tipi_Gara || '',
       metodoCalcolo: c.Metodo_Calcolo || '',
@@ -605,11 +605,12 @@ function GestioneCategorie({ onBack }) {
     try {
       const numero = categorie.length + 1
       const id = `CAT-${String(numero).padStart(2, '0')}`
+      // Ordine colonne foglio: ID_Categoria, Nome, Fascia_Eta, Attiva, Età_Min, Età_Max, Sesso, Tipi_Gara, Metodo_Calcolo
       await aggiungiRiga(SHEETS.CATEGORIE, [
         id, nuovoForm.nome.trim(), nuovoForm.fasciaEta.trim(),
+        nuovoForm.attiva ? 'TRUE' : 'FALSE',
         nuovoForm.etaMin, nuovoForm.etaMax, nuovoForm.sesso,
-        nuovoForm.tipiGara, nuovoForm.metodoCalcolo,
-        nuovoForm.attiva ? 'TRUE' : 'FALSE'
+        nuovoForm.tipiGara, nuovoForm.metodoCalcolo
       ])
       setNuovoForm({ nome: '', fasciaEta: '', etaMin: '', etaMax: '', sesso: '', tipiGara: '', metodoCalcolo: '', attiva: true })
       ricarica()
@@ -655,7 +656,7 @@ function GestioneCategorie({ onBack }) {
                     <div style={{ fontWeight: '600', fontSize: '15px' }}>{c.Nome}</div>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                       {c.Fascia_Eta || ''}
-                      {c.Eta_Min && c.Eta_Max ? ` (${c.Eta_Min}-${c.Eta_Max} anni)` : ''}
+                      {c.Età_Min && c.Età_Max ? ` (${c.Età_Min}-${c.Età_Max} anni)` : ''}
                       {c.Sesso ? ` · ${c.Sesso}` : ''}
                     </div>
                   </div>

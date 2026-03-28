@@ -725,15 +725,6 @@ function ModificaEvento({ evento, onBack, onSaved }) {
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
 
-  useEffect(() => {
-    if (categorie.length > 0) {
-      console.log('CHIAVI CATEGORIA:', JSON.stringify(Object.keys(categorie[0])))
-      console.log('OGGETTO COMPLETO:', JSON.stringify(categorie[0]))
-      console.log('ID_Categoria value:', categorie[0].ID_Categoria)
-      console.log('ID_Categoria type:', typeof categorie[0].ID_Categoria)
-    }
-  }, [categorie])
-
   const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
 
   async function handleSalva() {
@@ -744,7 +735,7 @@ function ModificaEvento({ evento, onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      const payload = {
+      await aggiornaEvento({
         ID_Evento: evento.ID_Evento,
         Titolo: form.titolo,
         Data_Inizio: form.dataInizio,
@@ -761,13 +752,7 @@ function ModificaEvento({ evento, onBack, onSaved }) {
         Iscritti: evento.Iscritti || '',
         Stato_Pagamento_Gara: evento.Stato_Pagamento_Gara || 'Da pagare',
         Note: form.note
-      }
-      console.log('=== DEBUG MODIFICA EVENTO ===')
-      console.log('form.idCategoria:', JSON.stringify(form.idCategoria))
-      console.log('join result:', form.idCategoria.join(','))
-      console.log('payload.ID_Categoria:', payload.ID_Categoria)
-      console.log('full payload:', JSON.stringify(payload, null, 2))
-      await aggiornaEvento(payload)
+      })
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)
     } catch (err) {
