@@ -116,6 +116,10 @@ export default function Atleti() {
       <div>
         <div className="page-header">
           <h1 className="page-title">Atleti</h1>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button className="btn btn-ghost" onClick={() => navigaVista('categorie')} style={{ padding: '6px 12px', fontSize: '13px' }}>Categorie</button>
+            <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+          </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
@@ -342,7 +346,7 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
       <div className="card">
         <div className="form-group">
           <label className="form-label">Importo quota (vuoto = {form.tipoAtleta === 'Non agonista' ? '€0 (accordo comunale)' : `standard €${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`})</label>
-          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`} />
+          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${form.tipoAtleta === 'Non agonista' ? '0' : PAGAMENTI_CONFIG.QUOTA_ANNUALE}`} />
         </div>
         {titolo === 'Nuovo Atleta' && (
           <>
@@ -1361,6 +1365,18 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
   const [numeroFISR, setNumeroFISR] = useState(atleta.Numero_FISR || '')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(null)
+  const [docCaricato, setDocCaricato] = useState({ certificato: false, fisr: false })
+
+  useEffect(() => {
+    if (!atleta.Drive_Folder_ID) return
+    listaDocumentiAtleta(atleta.Drive_Folder_ID).then(files => {
+      const nomi = files.map(f => f.name?.toLowerCase() || '')
+      setDocCaricato({
+        certificato: nomi.some(n => n.includes('certificato_medico')),
+        fisr: nomi.some(n => n.includes('tessera_fisr'))
+      })
+    }).catch(() => {})
+  }, [atleta.Drive_Folder_ID])
   const [refreshDocs, setRefreshDocs] = useState(0)
 
   async function handleSalva() {
@@ -1395,12 +1411,12 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
       }
       const fileFinale = await comprimiImmagine(file)
       const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
-      const nomeFile = tipo === 'certificato'
-        ? `certificato_medico.${ext}`
-        : `tessera_fisr.${ext}`
-      await caricaDocumento(fileFinale, nomeFile, folderId)
+      const nomeBase = tipo === 'certificato'
+        ? `${atleta.Nome}_${atleta.Cognome}_certificato_medico`.replace(/\s+/g, '_')
+        : `${atleta.Nome}_${atleta.Cognome}_tessera_FISR`.replace(/\s+/g, '_')
+      await caricaDocumento(fileFinale, `${nomeBase}.${ext}`, folderId)
       setRefreshDocs(prev => prev + 1)
-      alert(`${tipo === 'certificato' ? 'Certificato medico' : 'Tessera FISR'} caricato ✓`)
+      setDocCaricato(prev => ({ ...prev, [tipo]: true }))
     } catch (err) {
       console.error(err)
       alert('Errore durante il caricamento')
@@ -1436,8 +1452,8 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           style={{ display: 'none' }}
           id="upload-cert"
         />
-        <label htmlFor="upload-cert" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
-          {uploading === 'certificato' ? 'Caricamento...' : '📎 Carica certificato medico (foto o file)'}
+        <label htmlFor="upload-cert" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center', color: docCaricato.certificato ? 'var(--accent-ok)' : undefined }}>
+          {uploading === 'certificato' ? 'Caricamento...' : docCaricato.certificato ? '✅ Certificato caricato (tap per sostituire)' : '📎 Carica certificato medico (foto o file)'}
         </label>
       </div>
 
@@ -1459,8 +1475,8 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           style={{ display: 'none' }}
           id="upload-fisr"
         />
-        <label htmlFor="upload-fisr" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
-          {uploading === 'fisr' ? 'Caricamento...' : '📎 Carica tessera FISR (foto o file)'}
+        <label htmlFor="upload-fisr" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center', color: docCaricato.fisr ? 'var(--accent-ok)' : undefined }}>
+          {uploading === 'fisr' ? 'Caricamento...' : docCaricato.fisr ? '✅ Tessera FISR caricata (tap per sostituire)' : '📎 Carica tessera FISR (foto o file)'}
         </label>
       </div>
 
@@ -1606,8 +1622,12 @@ function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
     }
     const fileFinale = await comprimiImmagine(file)
     const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
-    const nomeFile = `ricevuta_${pag.Tipo}_${pag.ID_Pagamento}.${ext}`
-    await caricaDocumento(fileFinale, nomeFile, folderId)
+    const stagione = pag.Descrizione?.match(/\d{4}\/\d{4}/)?.[0]?.replace('/', '_') || ''
+    const rata = pag.Descrizione?.match(/Rata (\d\/\d)/)?.[1]?.replace('/', '_') || ''
+    const nomeBase = rata
+      ? `${atleta.Nome}_${atleta.Cognome}_quota_${stagione}_rata_${rata}`
+      : `${atleta.Nome}_${atleta.Cognome}_${pag.Tipo}_${pag.ID_Pagamento}`
+    await caricaDocumento(fileFinale, `${nomeBase.replace(/\s+/g, '_')}.${ext}`, folderId)
     setRefreshDocs(prev => prev + 1)
     alert('Ricevuta caricata ✓')
   }

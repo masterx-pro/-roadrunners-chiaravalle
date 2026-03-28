@@ -278,6 +278,21 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [saving, setSaving] = useState(false)
   const [statoPag, setStatoPag] = useState(gara.Stato_Pagamento_Gara || 'Da pagare')
   const [refreshDocs, setRefreshDocs] = useState(0)
+  const [docCaricato, setDocCaricato] = useState({ ricevuta: false, iscrizione: false })
+
+  useEffect(() => {
+    if (!gara.Drive_Folder_Gara) return
+    const token = localStorage.getItem('gapi_token')
+    fetch(`https://www.googleapis.com/drive/v3/files?q='${gara.Drive_Folder_Gara}'+in+parents+and+trashed=false&fields=files(name)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).then(r => r.json()).then(data => {
+      const nomi = (data.files || []).map(f => f.name?.toLowerCase() || '')
+      setDocCaricato({
+        ricevuta: nomi.some(n => n.includes('ricevuta_pagamento')),
+        iscrizione: nomi.some(n => n.includes('iscrizione_'))
+      })
+    }).catch(() => {})
+  }, [gara.Drive_Folder_Gara, refreshDocs])
 
   const scadenze = [
     { label: 'Iscrizione atleti', data: gara.Scad_Iscrizione, icona: '📋' },
@@ -396,15 +411,18 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
                   await aggiornaEvento({ ...gara, Drive_Folder_Gara: folderId })
                   onUpdate({ ...gara, Drive_Folder_Gara: folderId })
                 }
-                await caricaDocumentoGara(folderId, file, `ricevuta_pagamento_${file.name}`)
+                const titoloGara = gara.Titolo.replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ ]/g, '').replace(/\s+/g, '_')
+                const annoGara = gara.Data_Inizio?.split('-')[0] || ''
+                const ext = file.name.split('.').pop() || 'pdf'
+                await caricaDocumentoGara(folderId, file, `ricevuta_pagamento_${titoloGara}_${annoGara}.${ext}`)
                 setRefreshDocs(prev => prev + 1)
-                alert('Ricevuta archiviata ✓')
+                setDocCaricato(prev => ({ ...prev, ricevuta: true }))
               }}
               style={{ display: 'none' }}
               id="upload-ricevuta"
             />
-            <label htmlFor="upload-ricevuta" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer' }}>
-              📎 Archivia ricevuta pagamento
+            <label htmlFor="upload-ricevuta" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', color: docCaricato.ricevuta ? 'var(--accent-ok)' : undefined }}>
+              {docCaricato.ricevuta ? '✅ Ricevuta caricata (tap per sostituire)' : '📎 Archivia ricevuta pagamento'}
             </label>
           </div>
         )}
@@ -440,15 +458,18 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
                 await aggiornaEvento({ ...gara, Drive_Folder_Gara: folderId })
                 onUpdate({ ...gara, Drive_Folder_Gara: folderId })
               }
-              await caricaDocumentoGara(folderId, file, `iscrizione_${file.name}`)
+              const titoloGara = gara.Titolo.replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ ]/g, '').replace(/\s+/g, '_')
+              const annoGara = gara.Data_Inizio?.split('-')[0] || ''
+              const ext = file.name.split('.').pop() || 'pdf'
+              await caricaDocumentoGara(folderId, file, `iscrizione_${titoloGara}_${annoGara}.${ext}`)
               setRefreshDocs(prev => prev + 1)
-              alert('Documento iscrizione archiviato ✓')
+              setDocCaricato(prev => ({ ...prev, iscrizione: true }))
             }}
             style={{ display: 'none' }}
             id="upload-iscrizione"
           />
-          <label htmlFor="upload-iscrizione" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer' }}>
-            📎 Archivia documento iscrizione
+          <label htmlFor="upload-iscrizione" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', color: docCaricato.iscrizione ? 'var(--accent-ok)' : undefined }}>
+            {docCaricato.iscrizione ? '✅ Iscrizione caricata (tap per sostituire)' : '📎 Archivia documento iscrizione'}
           </label>
         </div>
         <ListaDocumentiGara driveFolderId={gara.Drive_Folder_Gara} key={refreshDocs} />
