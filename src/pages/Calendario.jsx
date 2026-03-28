@@ -735,7 +735,7 @@ function ModificaEvento({ evento, onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      await aggiornaEvento({
+      const payload = {
         ID_Evento: evento.ID_Evento,
         Titolo: form.titolo,
         Data_Inizio: form.dataInizio,
@@ -752,7 +752,13 @@ function ModificaEvento({ evento, onBack, onSaved }) {
         Iscritti: evento.Iscritti || '',
         Stato_Pagamento_Gara: evento.Stato_Pagamento_Gara || 'Da pagare',
         Note: form.note
-      })
+      }
+      console.log('=== DEBUG MODIFICA EVENTO ===')
+      console.log('form.idCategoria:', JSON.stringify(form.idCategoria))
+      console.log('join result:', form.idCategoria.join(','))
+      console.log('payload.ID_Categoria:', payload.ID_Categoria)
+      console.log('full payload:', JSON.stringify(payload, null, 2))
+      await aggiornaEvento(payload)
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)
     } catch (err) {
