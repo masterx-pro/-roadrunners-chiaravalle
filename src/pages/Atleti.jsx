@@ -4,7 +4,7 @@ import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
 
-export default function Atleti() {
+export default function Atleti({ nav }) {
   const [atleti, setAtleti] = useState([])
   const [pattini, setPattini] = useState([])
   const [categorie, setCategorie] = useState([])
@@ -18,35 +18,32 @@ export default function Atleti() {
   const [tipoVista, setTipoVista] = useState(null) // null | 'Agonista' | 'Non agonista'
 
   function navigaVista(nuovaVista, atleta) {
-    if (nuovaVista !== 'lista') {
-      window.history.pushState({ vista: nuovaVista }, '', '')
-    }
+    nav.avanti({ tab: 'atleti', vista: nuovaVista })
     if (atleta !== undefined) setAtletaSelezionato(atleta)
     setVista(nuovaVista)
   }
 
+  // Reagisci al tasto indietro (stack pop)
   useEffect(() => {
-    function handlePopState() {
-      if (vista !== 'lista' || atletaSelezionato) {
-        setVista('lista')
-        setAtletaSelezionato(null)
-      } else if (tipoVista) {
-        setTipoVista(null)
-      }
+    const stato = nav.stato
+    if (stato.tab !== 'atleti') return
+    if (!stato.vista) {
+      setVista('lista')
+      setTipoVista(null)
+      setAtletaSelezionato(null)
+    } else if (stato.vista === 'lista') {
+      setVista('lista')
+      setAtletaSelezionato(null)
+    } else if (stato.vista === 'scheda') {
+      setVista('scheda')
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [vista, atletaSelezionato, tipoVista])
+  }, [nav.stato])
 
-  // Navigazione da Dashboard
+  // Navigazione da Dashboard (tipoVista nel nav.stato iniziale)
   useEffect(() => {
-    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
-    if (filtroRaw) {
-      try {
-        const filtro = JSON.parse(filtroRaw)
-        if (filtro.tipoVista) setTipoVista(filtro.tipoVista)
-        sessionStorage.removeItem('dashboard_filtro')
-      } catch (e) {}
+    const stato = nav.stato
+    if (stato.tab === 'atleti' && stato.tipoVista) {
+      setTipoVista(stato.tipoVista)
     }
   }, [])
 
@@ -70,21 +67,21 @@ export default function Atleti() {
   if (loading) return <div className="loading-center">Caricamento atleti...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoAtleta tipoVista={tipoVista} onBack={() => window.history.back()} onSaved={() => {
+    return <NuovoAtleta tipoVista={tipoVista} onBack={() => nav.indietro()} onSaved={() => {
       setVista('lista')
       ricarica()
     }} />
   }
 
   if (vista === 'categorie') {
-    return <GestioneCategorie onBack={() => window.history.back()} />
+    return <GestioneCategorie onBack={() => nav.indietro()} />
   }
 
   if (vista === 'modifica' && atletaSelezionato) {
     return <ModificaAtleta
       atleta={atletaSelezionato}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => {
         setVista('lista')
         setAtletaSelezionato(null)
@@ -99,7 +96,8 @@ export default function Atleti() {
         atleta={atletaSelezionato}
         atleti={atleti}
         pattini={pattini}
-        onBack={() => window.history.back()}
+        nav={nav}
+        onBack={() => nav.indietro()}
         onModifica={() => navigaVista('modifica')}
         onDisattivato={() => { setAtletaSelezionato(null); setVista('lista'); ricarica() }}
       />
@@ -124,7 +122,7 @@ export default function Atleti() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
             className="card"
-            onClick={() => { setTipoVista('Agonista'); window.history.pushState({ vista: 'agonisti' }, '', '') }}
+            onClick={() => { setTipoVista('Agonista'); nav.avanti({ tab: 'atleti', vista: 'lista', tipoVista: 'Agonista' }) }}
             style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '24px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}
           >
             <span style={{ fontSize: '36px' }}>🏅</span>
@@ -136,7 +134,7 @@ export default function Atleti() {
           </button>
           <button
             className="card"
-            onClick={() => { setTipoVista('Non agonista'); window.history.pushState({ vista: 'non_agonisti' }, '', '') }}
+            onClick={() => { setTipoVista('Non agonista'); nav.avanti({ tab: 'atleti', vista: 'lista', tipoVista: 'Non agonista' }) }}
             style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '24px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}
           >
             <span style={{ fontSize: '36px' }}>🎿</span>
@@ -169,7 +167,7 @@ export default function Atleti() {
   return (
     <div>
       <div className="page-header">
-        <button className="btn btn-ghost" onClick={() => { setTipoVista(null); window.history.back() }} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <button className="btn btn-ghost" onClick={() => nav.indietro()} style={{ padding: '8px 12px' }}>← Indietro</button>
         <h1 className="page-title" style={{ fontSize: '22px' }}>{tipoVista === 'Agonista' ? 'Agonisti' : 'Non agonisti'}</h1>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
@@ -960,7 +958,7 @@ async function comprimiImmagine(file, maxWidth = 1200, qualita = 0.7) {
 // SCHEDA ATLETA
 // ============================================================
 
-function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattivato }) {
+function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisattivato }) {
   const [documenti, setDocumenti] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [uploading, setUploading] = useState(null) // null o chiave identificativa
@@ -976,20 +974,18 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
 
   function navigaSottoVista(nuova) {
     if (nuova) {
-      window.history.pushState({ sottoVista: nuova }, '', '')
+      nav.avanti({ tab: 'atleti', vista: 'sottoVista', tipo: nuova })
     }
     setSottoVista(nuova)
   }
 
+  // Reagisci al tasto indietro
   useEffect(() => {
-    function handlePopState() {
-      if (sottoVista) {
-        setSottoVista(null)
-      }
+    const stato = nav.stato
+    if (stato.tab === 'atleti' && stato.vista === 'scheda' && sottoVista) {
+      setSottoVista(null)
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [sottoVista])
+  }, [nav.stato])
 
   const CATEGORIE_DOC = [
     { key: 'certificato_medico', label: 'Certificato medico', icona: '🏥' },
@@ -1099,7 +1095,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     return <ModificaScadenze
       atleta={atleta}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }
@@ -1109,7 +1105,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       atleta={atleta}
       pattino={pattiniAtleta[0]}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }
@@ -1118,7 +1114,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     return <GestionePagamenti
       atleta={atleta}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }

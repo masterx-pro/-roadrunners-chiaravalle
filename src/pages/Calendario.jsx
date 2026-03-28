@@ -17,7 +17,7 @@ function formattaRange(dataInizio, dataFine) {
   return `${inizio} – ${fine}`
 }
 
-export default function Calendario() {
+export default function Calendario({ nav }) {
   const [slotFissi, setSlotFissi] = useState([])
   const [eventi, setEventi] = useState([])
   const [atleti, setAtleti] = useState([])
@@ -27,18 +27,18 @@ export default function Calendario() {
 
   function navigaVista(nuovaVista) {
     if (nuovaVista) {
-      window.history.pushState({ vista: nuovaVista.tipo }, '', '')
+      nav.avanti({ tab: 'calendario', vista: nuovaVista.tipo })
     }
     setVista(nuovaVista)
   }
 
+  // Reagisci al tasto indietro
   useEffect(() => {
-    function handlePopState() {
+    const stato = nav.stato
+    if (stato.tab === 'calendario' && !stato.vista) {
       setVista(null)
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  }, [nav.stato])
 
   useEffect(() => {
     async function carica() {
@@ -54,20 +54,14 @@ export default function Calendario() {
   // Navigazione da Dashboard → dettaglio evento
   useEffect(() => {
     if (loading || eventi.length === 0) return
-    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
-    if (filtroRaw) {
-      try {
-        const filtro = JSON.parse(filtroRaw)
-        if (filtro.evento) {
-          const eventoTrovato = eventi.find(e => e.ID_Evento === filtro.evento)
-          if (eventoTrovato) {
-            const isGara = eventoTrovato.Tipo === 'Gara' || eventoTrovato.Tipo === 'Trasferta'
-            navigaVista({ tipo: isGara ? 'gara' : 'presenze', dati: eventoTrovato })
-            setTab('eventi')
-          }
-        }
-        sessionStorage.removeItem('dashboard_filtro')
-      } catch (e) {}
+    const stato = nav.stato
+    if (stato.tab === 'calendario' && stato.evento) {
+      const eventoTrovato = eventi.find(e => e.ID_Evento === stato.evento)
+      if (eventoTrovato) {
+        const isGara = eventoTrovato.Tipo === 'Gara' || eventoTrovato.Tipo === 'Trasferta'
+        setVista({ tipo: isGara ? 'gara' : 'presenze', dati: eventoTrovato })
+        setTab('eventi')
+      }
     }
   }, [loading, eventi])
 
@@ -76,7 +70,7 @@ export default function Calendario() {
   if (vista?.tipo === 'modificaEvento') {
     return <ModificaEvento
       evento={vista.dati}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => {
         setVista(null)
         setLoading(true)
@@ -88,7 +82,7 @@ export default function Calendario() {
   }
 
   if (vista?.tipo === 'nuovoEvento') {
-    return <NuovoEvento onBack={() => window.history.back()} onSaved={() => {
+    return <NuovoEvento onBack={() => nav.indietro()} onSaved={() => {
       setVista(null)
       setLoading(true)
       Promise.all([getSlotFissi(), getEventiSpeciali(), getAtleti()]).then(([s, e, a]) => {
@@ -98,14 +92,14 @@ export default function Calendario() {
   }
 
   if (vista?.tipo === 'presenze') {
-    return <RegistroPresenze evento={vista.dati} atleti={atleti} onBack={() => window.history.back()} />
+    return <RegistroPresenze evento={vista.dati} atleti={atleti} onBack={() => nav.indietro()} />
   }
 
   if (vista?.tipo === 'gara') {
     return <DettaglioGara
       gara={vista.dati}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onUpdate={(garaAggiornata) => {
         setEventi(prev => prev.map(e => e.ID_Evento === garaAggiornata.ID_Evento ? garaAggiornata : e))
         setVista({ tipo: 'gara', dati: garaAggiornata })

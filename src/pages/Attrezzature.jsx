@@ -6,18 +6,11 @@ import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
 
 const isAttivo = v => ['TRUE', 'true', 'True'].includes(v?.trim())
 
-export default function Attrezzature() {
-  const [tab, setTab] = useState('pattini')
-
-  useEffect(() => {
-    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
-    if (filtroRaw) {
-      try {
-        const filtro = JSON.parse(filtroRaw)
-        if (filtro.tab) setTab(filtro.tab)
-      } catch (e) {}
-    }
-  }, [])
+export default function Attrezzature({ nav }) {
+  const [tab, setTab] = useState(() => {
+    const stato = nav.stato
+    return (stato.tab === 'attrezzature' && stato['tab']) || 'pattini'
+  })
 
   return (
     <div>
@@ -37,8 +30,8 @@ export default function Attrezzature() {
         </button>
       </div>
 
-      {tab === 'pattini' && <PattiniView />}
-      {tab === 'ruote' && <RuoteView />}
+      {tab === 'pattini' && <PattiniView nav={nav} />}
+      {tab === 'ruote' && <RuoteView nav={nav} />}
       {tab === 'numeri' && <NumeriView />}
     </div>
   )
@@ -48,40 +41,30 @@ export default function Attrezzature() {
 // PATTINI
 // ============================================================
 
-function PattiniView() {
+function PattiniView({ nav }) {
   const [pattini, setPattini] = useState([])
   const [atleti, setAtleti] = useState([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState(() => {
-    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
-    if (filtroRaw) {
-      try {
-        const f = JSON.parse(filtroRaw)
-        sessionStorage.removeItem('dashboard_filtro')
-        if (f.filtro) return f.filtro
-      } catch (e) {}
-    }
-    return 'tutti'
+    const stato = nav.stato
+    return (stato.tab === 'attrezzature' && stato.filtro) || 'tutti'
   })
-  const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'dettaglio'
+  const [vista, setVista] = useState('lista')
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
 
   function navigaVista(nuovaVista) {
-    if (nuovaVista !== 'lista') {
-      window.history.pushState({ vista: nuovaVista }, '', '')
-    }
+    nav.avanti({ tab: 'attrezzature', vista: nuovaVista })
     setVista(nuovaVista)
   }
 
   useEffect(() => {
-    function handlePopState() {
+    const stato = nav.stato
+    if (stato.tab === 'attrezzature' && !stato.vista) {
       setVista('lista')
       setSelezionato(null)
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  }, [nav.stato])
 
   function ricarica() {
     setLoading(true)
@@ -95,7 +78,7 @@ function PattiniView() {
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoPattino onBack={() => window.history.back()} onSaved={() => { setVista('lista'); ricarica() }} />
+    return <NuovoPattino onBack={() => nav.indietro()} onSaved={() => { setVista('lista'); ricarica() }} />
   }
 
   if (vista === 'dettaglio' && selezionato) {
@@ -103,7 +86,7 @@ function PattiniView() {
       pattino={selezionato}
       idx={selIdx}
       atleti={atleti}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => { setVista('lista'); setSelezionato(null); ricarica() }}
     />
   }
@@ -455,28 +438,25 @@ function DettaglioPattino({ pattino, idx, atleti, onBack, onSaved }) {
 // RUOTE
 // ============================================================
 
-function RuoteView() {
+function RuoteView({ nav }) {
   const [ruote, setRuote] = useState([])
   const [loading, setLoading] = useState(true)
-  const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'dettaglio'
+  const [vista, setVista] = useState('lista')
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
 
   function navigaVista(nuovaVista) {
-    if (nuovaVista !== 'lista') {
-      window.history.pushState({ vista: nuovaVista }, '', '')
-    }
+    nav.avanti({ tab: 'attrezzature', vista: nuovaVista })
     setVista(nuovaVista)
   }
 
   useEffect(() => {
-    function handlePopState() {
+    const stato = nav.stato
+    if (stato.tab === 'attrezzature' && !stato.vista) {
       setVista('lista')
       setSelezionato(null)
     }
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [])
+  }, [nav.stato])
 
   function ricarica() {
     setLoading(true)
@@ -488,14 +468,14 @@ function RuoteView() {
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoSetRuote onBack={() => window.history.back()} onSaved={() => { setVista('lista'); ricarica() }} />
+    return <NuovoSetRuote onBack={() => nav.indietro()} onSaved={() => { setVista('lista'); ricarica() }} />
   }
 
   if (vista === 'dettaglio' && selezionato) {
     return <DettaglioRuote
       ruote={selezionato}
       idx={selIdx}
-      onBack={() => window.history.back()}
+      onBack={() => nav.indietro()}
       onSaved={() => { setVista('lista'); setSelezionato(null); ricarica() }}
     />
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import Dashboard from './pages/Dashboard'
 import Atleti from './pages/Atleti'
@@ -20,29 +20,51 @@ const TABS = [
 export default function App() {
   const { isSignedIn, user, loading, errore, signIn } = useGoogleAuth()
   const [tab, setTab] = useState('home')
+  const [navStack, setNavStack] = useState([{ tab: 'home' }])
 
-  function navigaTab(nuovoTab) {
-    if (nuovoTab !== tab) {
-      window.history.pushState({ tab: nuovoTab }, '', '')
-      setTab(nuovoTab)
-    }
-  }
+  const navigaAvanti = useCallback((nuovoStato) => {
+    setNavStack(prev => {
+      const nuovo = [...prev, nuovoStato]
+      window.history.pushState({ depth: nuovo.length }, '', '')
+      return nuovo
+    })
+    if (nuovoStato.tab) setTab(nuovoStato.tab)
+  }, [])
+
+  const cambiaTab = useCallback((nuovoTab) => {
+    setNavStack([{ tab: nuovoTab }])
+    setTab(nuovoTab)
+    window.history.pushState({ depth: 1 }, '', '')
+  }, [])
 
   useEffect(() => {
-    window.history.replaceState({ tab: 'home' }, '', '')
+    window.history.replaceState({ depth: 1 }, '', '')
 
-    function handlePopState(event) {
-      if (event.state?.tab) {
-        setTab(event.state.tab)
-      } else {
-        setTab('home')
-        window.history.pushState({ tab: 'home' }, '', '')
-      }
+    function handlePopState() {
+      setNavStack(prev => {
+        if (prev.length <= 1) {
+          window.history.pushState({ depth: 1 }, '', '')
+          return prev
+        }
+        const nuovo = prev.slice(0, -1)
+        const ultimo = nuovo[nuovo.length - 1]
+        if (ultimo.tab) setTab(ultimo.tab)
+        return nuovo
+      })
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  const nav = {
+    avanti: navigaAvanti,
+    indietro: () => { window.history.back() },
+    cambiaTab,
+    get stato() { return navStack[navStack.length - 1] },
+    stack: navStack,
+    navigaA: (tab, filtro) => { navigaAvanti({ tab, ...filtro }) }
+  }
 
   if (loading) return <div className="loading-center">Caricamento...</div>
   if (!isSignedIn) return <LoginPage onSignIn={signIn} errore={errore} />
@@ -50,13 +72,10 @@ export default function App() {
   return (
     <div className="app-layout">
       <div className="page-content">
-        {tab === 'home'         && <Dashboard onNavigate={(sezione, filtro) => {
-          if (filtro) sessionStorage.setItem('dashboard_filtro', JSON.stringify(filtro))
-          navigaTab(sezione)
-        }} />}
-        {tab === 'atleti'       && <Atleti />}
-        {tab === 'attrezzature' && <Attrezzature />}
-        {tab === 'calendario'   && <Calendario />}
+        {tab === 'home'         && <Dashboard nav={nav} />}
+        {tab === 'atleti'       && <Atleti nav={nav} />}
+        {tab === 'attrezzature' && <Attrezzature nav={nav} />}
+        {tab === 'calendario'   && <Calendario nav={nav} />}
         {tab === 'utenti'       && <Utenti />}
       </div>
 
@@ -67,7 +86,7 @@ export default function App() {
             <button
               key={t.id}
               className={`nav-item ${tab === t.id ? 'active' : ''}`}
-              onClick={() => navigaTab(t.id)}
+              onClick={() => cambiaTab(t.id)}
             >
               <Icon />
               {t.label}

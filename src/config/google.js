@@ -15,6 +15,7 @@ export const GOOGLE_CONFIG = {
   // ID della cartella Google Drive radice della società
   // La crei a mano su Drive, poi copi l'ID dall'URL
   DRIVE_ROOT_FOLDER_ID: '1pcjZWEch4CziVdkoltLXg0T9lgNMNljt',
+  DRIVE_ATLETI_FOLDER_ID: '15f5KZ04x_egZCd0WIucXgralmF1LzVqq',
 
   // Scopes necessari
   SCOPES: [

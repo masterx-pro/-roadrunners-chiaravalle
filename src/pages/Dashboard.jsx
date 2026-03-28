@@ -3,7 +3,7 @@ import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggi
 import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData, trimestreCorrente, scadenzaTrimestreCorrente, pattiniDaPagare } from '../utils/dateUtils'
 
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard({ nav }) {
   const [atleti, setAtleti] = useState([])
   const [pattini, setPattini] = useState([])
   const [eventi, setEventi] = useState([])
@@ -116,25 +116,25 @@ export default function Dashboard({ onNavigate }) {
 
       {/* STATS */}
       <div className="stats-grid">
-        <div className="stat-card" onClick={() => onNavigate?.('atleti', { tipoVista: 'Agonista' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('atleti', { tipoVista: 'Agonista' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value">{atletiAttivi.filter(a => (a.Tipo_Atleta || 'Agonista') === 'Agonista').length}</div>
           <div className="stat-label">🏅 Agonisti</div>
         </div>
-        <div className="stat-card" onClick={() => onNavigate?.('atleti', { tipoVista: 'Non agonista' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('atleti', { tipoVista: 'Non agonista' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value">{atletiAttivi.filter(a => a.Tipo_Atleta === 'Non agonista').length}</div>
           <div className="stat-label">🎿 Non agonisti</div>
         </div>
-        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: pattiniLiberi.length === 0 ? 'var(--accent)' : 'var(--accent-ok)' }}>
             {pattiniLiberi.length}
           </div>
           <div className="stat-label">Pattini liberi</div>
         </div>
-        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'noleggiati' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'noleggiati' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: 'var(--text-secondary)' }}>{pattiniNoleggiati.length}</div>
           <div className="stat-label">In noleggio</div>
         </div>
-        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'da_pagare' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'da_pagare' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: daPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
             {daPagare.length}
           </div>
@@ -154,7 +154,7 @@ export default function Dashboard({ onNavigate }) {
 
         return (
           <div className="card" style={{ marginBottom: '16px', cursor: 'pointer' }}
-            onClick={() => onNavigate?.('atleti')}
+            onClick={() => nav.navigaA('atleti', {})}
           >
             <div className="section-title" style={{ margin: '0 0 12px 0' }}>💳 Quote associative</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -188,7 +188,7 @@ export default function Dashboard({ onNavigate }) {
       {/* PROSSIMO EVENTO */}
       {prossimoEvento && (
         <div className="card" style={{ marginBottom: '16px', cursor: 'pointer' }}
-          onClick={() => onNavigate?.('calendario', { evento: prossimoEvento.ID_Evento })}
+          onClick={() => nav.navigaA('calendario', { evento: prossimoEvento.ID_Evento })}
         >
           <div className="section-title">Prossimo evento</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

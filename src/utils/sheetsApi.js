@@ -384,7 +384,7 @@ export async function creaCartellaAtleta(nomeAtleta, idAtleta) {
     body: JSON.stringify({
       name: `${nomeAtleta}_${idAtleta}`,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID]
+      parents: [GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID || GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID]
     })
   })
   const data = await res.json()
