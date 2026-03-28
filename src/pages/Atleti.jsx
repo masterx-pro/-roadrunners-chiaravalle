@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -15,6 +15,7 @@ export default function Atleti() {
   const [mostraExport, setMostraExport] = useState(false)
   const [atletaSelezionato, setAtletaSelezionato] = useState(null)
   const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'categorie' | 'modifica'
+  const [tipoVista, setTipoVista] = useState(null) // null | 'Agonista' | 'Non agonista'
 
   function navigaVista(nuovaVista, atleta) {
     if (nuovaVista !== 'lista') {
@@ -26,11 +27,27 @@ export default function Atleti() {
 
   useEffect(() => {
     function handlePopState() {
-      setVista('lista')
-      setAtletaSelezionato(null)
+      if (vista !== 'lista' || atletaSelezionato) {
+        setVista('lista')
+        setAtletaSelezionato(null)
+      } else if (tipoVista) {
+        setTipoVista(null)
+      }
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
+  }, [vista, atletaSelezionato, tipoVista])
+
+  // Navigazione da Dashboard
+  useEffect(() => {
+    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
+    if (filtroRaw) {
+      try {
+        const filtro = JSON.parse(filtroRaw)
+        if (filtro.tipoVista) setTipoVista(filtro.tipoVista)
+        sessionStorage.removeItem('dashboard_filtro')
+      } catch (e) {}
+    }
   }, [])
 
   function ricarica() {
@@ -53,7 +70,7 @@ export default function Atleti() {
   if (loading) return <div className="loading-center">Caricamento atleti...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoAtleta onBack={() => window.history.back()} onSaved={() => {
+    return <NuovoAtleta tipoVista={tipoVista} onBack={() => window.history.back()} onSaved={() => {
       setVista('lista')
       ricarica()
     }} />
@@ -89,13 +106,55 @@ export default function Atleti() {
     )
   }
 
+  // Landing page — scelta agonisti / non agonisti
+  if (!tipoVista) {
+    const atletiAttivi = atleti.filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
+    const agonisti = atletiAttivi.filter(a => (a.Tipo_Atleta || 'Agonista') === 'Agonista')
+    const nonAgonisti = atletiAttivi.filter(a => a.Tipo_Atleta === 'Non agonista')
+
+    return (
+      <div>
+        <div className="page-header">
+          <h1 className="page-title">Atleti</h1>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <button
+            className="card"
+            onClick={() => { setTipoVista('Agonista'); window.history.pushState({ vista: 'agonisti' }, '', '') }}
+            style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '24px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}
+          >
+            <span style={{ fontSize: '36px' }}>🏅</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700', textTransform: 'uppercase' }}>Agonisti</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Giovanissimi → Seniores</div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: '700', color: 'var(--accent)' }}>{agonisti.length}</div>
+          </button>
+          <button
+            className="card"
+            onClick={() => { setTipoVista('Non agonista'); window.history.pushState({ vista: 'non_agonisti' }, '', '') }}
+            style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '24px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--bg-card)', textAlign: 'left', width: '100%' }}
+          >
+            <span style={{ fontSize: '36px' }}>🎿</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700', textTransform: 'uppercase' }}>Non agonisti</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>Primi Passi / Amatori</div>
+            </div>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '32px', fontWeight: '700', color: 'var(--accent)' }}>{nonAgonisti.length}</div>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const categorieAttive = categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()))
 
   // Nomi categoria unici (senza sesso) per il filtro
-  const nomiCategoriaUnici = [...new Set(categorieAttive.map(c => c.Nome?.replace(/ [MF]$/, '')))]
+  const nomiCategoriaUnici = [...new Set(categorieAttive.filter(c => (c.Tipo || '').trim() === tipoVista).map(c => c.Nome?.replace(/ [MF]$/, '')))]
 
   const atletiFiltrati = atleti
     .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
+    .filter(a => (a.Tipo_Atleta || 'Agonista') === tipoVista)
     .filter(a => filtroSesso === 'tutti' || a.Sesso === filtroSesso)
     .filter(a => filtroCategoria === 'tutte' || a.Nome_Categoria === filtroCategoria || a.Nome_Categoria?.replace(/ [MF]$/, '') === filtroCategoria)
     .filter(a => {
@@ -106,7 +165,8 @@ export default function Atleti() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Atleti</h1>
+        <button className="btn btn-ghost" onClick={() => { setTipoVista(null); window.history.back() }} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>{tipoVista === 'Agonista' ? 'Agonisti' : 'Non agonisti'}</h1>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div style={{ position: 'relative' }}>
             <button className="btn btn-ghost" onClick={() => setMostraExport(!mostraExport)} style={{ padding: '6px 12px', fontSize: '13px' }}>
@@ -188,30 +248,17 @@ export default function Atleti() {
 // FORM ATLETA (condiviso tra Nuovo e Modifica)
 // ============================================================
 
-function calcolaCategoriaSuggerita(dataNascita, sesso, categorie) {
-  if (!dataNascita || !sesso) return null
-  const oggi = new Date()
-  const nascita = new Date(dataNascita)
-  const eta = oggi.getFullYear() - nascita.getFullYear()
-
-  const cat = categorie.find(c =>
-    c.Sesso === sesso &&
-    parseInt(c.Età_Min) <= eta &&
-    eta <= parseInt(c.Età_Max) &&
-    ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
-  )
-  return cat || null
-}
-
 function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, errore, mostraNoleggio = true }) {
-  const categoriaSuggerita = calcolaCategoriaSuggerita(form.dataNascita, form.sesso, categorie)
-
-  // Auto-preseleziona categoria quando cambia suggerimento
+  // Auto-preseleziona categoria per anno nascita
   useEffect(() => {
-    if (categoriaSuggerita && !form.idCategoria) {
-      update('idCategoria', categoriaSuggerita.ID_Categoria)
+    if (form.dataNascita && form.sesso && form.tipoAtleta && categorie.length > 0) {
+      const annoNascita = new Date(form.dataNascita).getFullYear()
+      const cat = trovaCategoriaPerNascita(annoNascita, form.sesso, form.tipoAtleta, categorie)
+      if (cat) {
+        update('idCategoria', cat.ID_Categoria)
+      }
     }
-  }, [categoriaSuggerita?.ID_Categoria])
+  }, [form.dataNascita, form.sesso, form.tipoAtleta, categorie])
 
   return (
     <div>
@@ -219,6 +266,32 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
         <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
         <h1 className="page-title" style={{ fontSize: '22px' }}>{titolo}</h1>
       </div>
+
+      {titolo === 'Nuovo Atleta' && (
+        <>
+          <div className="section-title">Tipo atleta</div>
+          <div className="card" style={{ marginBottom: '16px' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className={`badge ${form.tipoAtleta === 'Agonista' ? 'badge-danger' : 'badge-muted'}`}
+                style={{ cursor: 'pointer', padding: '10px 20px', fontSize: '15px', border: 'none', flex: 1, justifyContent: 'center' }}
+                onClick={() => update('tipoAtleta', 'Agonista')}
+              >
+                🏅 Agonista
+              </button>
+              <button
+                type="button"
+                className={`badge ${form.tipoAtleta === 'Non agonista' ? 'badge-danger' : 'badge-muted'}`}
+                style={{ cursor: 'pointer', padding: '10px 20px', fontSize: '15px', border: 'none', flex: 1, justifyContent: 'center' }}
+                onClick={() => update('tipoAtleta', 'Non agonista')}
+              >
+                🎿 Non agonista
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="section-title">Dati personali</div>
       <div className="card">
@@ -254,7 +327,7 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
           <label className="form-label">Categoria</label>
           <select className="form-input" value={form.idCategoria} onChange={e => update('idCategoria', e.target.value)}>
             <option value="">— Seleziona —</option>
-            {categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())).map(c => (
+            {categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()) && (!form.tipoAtleta || (c.Tipo || '').trim() === form.tipoAtleta)).map(c => (
               <option key={c.ID_Categoria} value={c.ID_Categoria}>{c.Nome}</option>
             ))}
           </select>
@@ -268,7 +341,7 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
       <div className="section-title">Quota associativa</div>
       <div className="card">
         <div className="form-group">
-          <label className="form-label">Importo quota (vuoto = standard €{PAGAMENTI_CONFIG.QUOTA_ANNUALE})</label>
+          <label className="form-label">Importo quota (vuoto = {form.tipoAtleta === 'Non agonista' ? '€0 (accordo comunale)' : `standard €${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`})</label>
           <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`} />
         </div>
         {titolo === 'Nuovo Atleta' && (
@@ -402,7 +475,7 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
 // NUOVO ATLETA
 // ============================================================
 
-function NuovoAtleta({ onBack, onSaved }) {
+function NuovoAtleta({ tipoVista, onBack, onSaved }) {
   const [categorie, setCategorie] = useState([])
   const [saving, setSaving] = useState(false)
   const [successo, setSuccesso] = useState(false)
@@ -415,7 +488,8 @@ function NuovoAtleta({ onBack, onSaved }) {
     note: '', noleggio: false, taglia: '', numeroGara: '',
     quotaPersonalizzata: '', tipoRate: '1',
     scadRata1: `${new Date().getFullYear()}-10-15`,
-    scadRata2: `${new Date().getFullYear() + 1}-01-15`
+    scadRata2: `${new Date().getFullYear() + 1}-01-15`,
+    tipoAtleta: tipoVista || 'Agonista'
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -430,7 +504,8 @@ function NuovoAtleta({ onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      const idAtleta = await creaAtleta(form)
+      const nomeCategoria = categorie.find(c => c.ID_Categoria === form.idCategoria)?.Nome || ''
+      const idAtleta = await creaAtleta({ ...form, nomeCategoria })
 
       // Crea cartella Drive e aggiorna riga atleta
       try {
@@ -457,7 +532,7 @@ function NuovoAtleta({ onBack, onSaved }) {
       // Genera quote associative
       const importoQuota = form.quotaPersonalizzata
         ? parseFloat(form.quotaPersonalizzata)
-        : PAGAMENTI_CONFIG.QUOTA_ANNUALE
+        : (form.tipoAtleta === 'Non agonista' ? 0 : PAGAMENTI_CONFIG.QUOTA_ANNUALE)
       const anno = new Date().getFullYear()
       const stagione = `${anno}/${anno + 1}`
       if (importoQuota > 0) {

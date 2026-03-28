@@ -116,9 +116,13 @@ export default function Dashboard({ onNavigate }) {
 
       {/* STATS */}
       <div className="stats-grid">
-        <div className="stat-card" onClick={() => onNavigate?.('atleti')} style={{ cursor: 'pointer' }}>
-          <div className="stat-value">{atletiAttivi.length}</div>
-          <div className="stat-label">Atleti attivi</div>
+        <div className="stat-card" onClick={() => onNavigate?.('atleti', { tipoVista: 'Agonista' })} style={{ cursor: 'pointer' }}>
+          <div className="stat-value">{atletiAttivi.filter(a => (a.Tipo_Atleta || 'Agonista') === 'Agonista').length}</div>
+          <div className="stat-label">🏅 Agonisti</div>
+        </div>
+        <div className="stat-card" onClick={() => onNavigate?.('atleti', { tipoVista: 'Non agonista' })} style={{ cursor: 'pointer' }}>
+          <div className="stat-value">{atletiAttivi.filter(a => a.Tipo_Atleta === 'Non agonista').length}</div>
+          <div className="stat-label">🎿 Non agonisti</div>
         </div>
         <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: pattiniLiberi.length === 0 ? 'var(--accent)' : 'var(--accent-ok)' }}>

@@ -95,7 +95,8 @@ export async function getAtleta(id) {
 // NOTA: l'ordine colonne del foglio Atleti è:
 // ID_Atleta, Nome, Cognome, Sesso, Luogo_Nascita, Data_Nascita, Codice_Fiscale,
 // ID_Categoria, Genitore_Nome, Nome_Categoria, Genitore_Telefono, Genitore_Email,
-// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione, Note, Numero_Gara, Quota_Personalizzata
+// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione,
+// Note, Numero_Gara, Quota_Personalizzata, Tipo_Atleta
 
 export function buildAtletaRow(a, overrides = {}) {
   return [
@@ -105,9 +106,10 @@ export function buildAtletaRow(a, overrides = {}) {
     a.Genitore_Telefono || '', a.Genitore_Email || '',
     a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
     a.Drive_Folder_ID || '', a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-    a.Note || '', a.Numero_Gara || '', a.Quota_Personalizzata || ''
+    a.Note || '', a.Numero_Gara || '', a.Quota_Personalizzata || '',
+    a.Tipo_Atleta || 'Agonista'
   ].map((v, i) => {
-    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata']
+    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata','Tipo_Atleta']
     return overrides[keys[i]] !== undefined ? overrides[keys[i]] : v
   })
 }
@@ -117,26 +119,50 @@ export async function creaAtleta(atleta) {
   const valori = [
     id, atleta.nome, atleta.cognome, atleta.sesso || '', atleta.luogoNascita || '',
     atleta.dataNascita, atleta.codiceFiscale || '', atleta.idCategoria || '',
-    atleta.genitoreNome || '', '', // Nome_Categoria — calcolato da formula CERCA.VERT
+    atleta.genitoreNome || '', atleta.nomeCategoria || '',
     atleta.genitoreTelefono || '', atleta.genitoreEmail || '',
     atleta.scadCertificato || '', atleta.scadFISR || '', atleta.numeroFISR || '',
     '', // Drive_Folder_ID
     'TRUE', atleta.dataIscrizione || new Date().toISOString().split('T')[0],
     atleta.note || '', atleta.numeroGara || '',
-    atleta.quotaPersonalizzata || ''
+    atleta.quotaPersonalizzata || '', atleta.tipoAtleta || 'Agonista'
   ]
   await aggiungiRiga(SHEETS.ATLETI, valori)
   await scriviLog('Nuovo', 'Atleta', `${atleta.nome} ${atleta.cognome}`)
   return id
 }
 
-export async function aggiornaCategorieBatch(atleti, categorie) {
+export function calcolaAnnoInizioStagione() {
   const oggi = new Date()
-  let aggiornati = 0
+  const mese = oggi.getMonth() + 1
+  return mese >= 10 ? oggi.getFullYear() : oggi.getFullYear() - 1
+}
+
+export function trovaCategoriaPerNascita(annoNascita, sesso, tipoAtleta, categorie) {
+  const annoStagione = calcolaAnnoInizioStagione()
 
   const categorieAttive = categorie.filter(c =>
     ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
   )
+
+  return categorieAttive.find(c => {
+    const catTipo = (c.Tipo || '').trim()
+    const catSesso = (c.Sesso || '').trim().toUpperCase()
+    const offsetDa = parseInt(c.Offset_Da) || 0
+    const offsetA = parseInt(c.Offset_A) || 99
+
+    if (catTipo !== tipoAtleta) return false
+    if (catSesso !== sesso.toUpperCase()) return false
+
+    const annoNascitaDa = annoStagione - offsetA
+    const annoNascitaA = annoStagione - offsetDa
+
+    return annoNascita >= annoNascitaDa && annoNascita <= annoNascitaA
+  })
+}
+
+export async function aggiornaCategorieBatch(atleti, categorie) {
+  let aggiornati = 0
 
   for (let i = 0; i < atleti.length; i++) {
     const atleta = atleti[i]
@@ -145,29 +171,19 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
 
     const nascita = new Date(atleta.Data_Nascita)
     if (isNaN(nascita.getTime())) continue
-    let eta = oggi.getFullYear() - nascita.getFullYear()
-    if (oggi.getMonth() < nascita.getMonth() || (oggi.getMonth() === nascita.getMonth() && oggi.getDate() < nascita.getDate())) {
-      eta--
-    }
-
+    const annoNascita = nascita.getFullYear()
     const sesso = atleta.Sesso?.trim().toUpperCase()
-    const categoriaCorretta = categorieAttive.find(c => {
-      const catSesso = (c.Sesso || '').trim().toUpperCase()
-      const etaMinRaw = c['Età_Min'] || c.Eta_Min || c['eta_min'] || c['ETA_MIN'] || ''
-      const etaMaxRaw = c['Età_Max'] || c.Eta_Max || c['eta_max'] || c['ETA_MAX'] || ''
-      const etaMin = parseInt(etaMinRaw) || 0
-      const etaMax = parseInt(etaMaxRaw) || 99
-      return catSesso === sesso && eta >= etaMin && eta <= etaMax
-    })
+    const tipoAtleta = atleta.Tipo_Atleta || 'Agonista'
 
+    const categoriaCorretta = trovaCategoriaPerNascita(annoNascita, sesso, tipoAtleta, categorie)
     if (!categoriaCorretta) continue
 
     const idCategoriaCorretta = categoriaCorretta.ID_Categoria || ''
+    const nomeCategoriaCorretto = categoriaCorretta.Nome || ''
     if (!idCategoriaCorretta) continue
 
     const idCategoriaAttuale = (atleta.ID_Categoria || '').trim()
     const nomeCategoriaAttuale = (atleta.Nome_Categoria || '').trim()
-    const nomeCategoriaCorretto = categoriaCorretta.Nome || ''
 
     if (idCategoriaAttuale !== idCategoriaCorretta || !nomeCategoriaAttuale) {
       try {
@@ -185,7 +201,8 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
   }
 
   if (aggiornati > 0) {
-    await scriviLog('Auto', 'Categorie', `${aggiornati} atleti aggiornati per età`)
+    const as = calcolaAnnoInizioStagione()
+    await scriviLog('Auto', 'Categorie', `${aggiornati} atleti aggiornati per stagione ${as}/${as + 1}`)
   }
   return aggiornati
 }
