@@ -9,6 +9,16 @@ const isAttivo = v => ['TRUE', 'true', 'True'].includes(v?.trim())
 export default function Attrezzature() {
   const [tab, setTab] = useState('pattini')
 
+  useEffect(() => {
+    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
+    if (filtroRaw) {
+      try {
+        const filtro = JSON.parse(filtroRaw)
+        if (filtro.tab) setTab(filtro.tab)
+      } catch (e) {}
+    }
+  }, [])
+
   return (
     <div>
       <div className="page-header">
@@ -42,7 +52,17 @@ function PattiniView() {
   const [pattini, setPattini] = useState([])
   const [atleti, setAtleti] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filtro, setFiltro] = useState('tutti')
+  const [filtro, setFiltro] = useState(() => {
+    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
+    if (filtroRaw) {
+      try {
+        const f = JSON.parse(filtroRaw)
+        sessionStorage.removeItem('dashboard_filtro')
+        if (f.filtro) return f.filtro
+      } catch (e) {}
+    }
+    return 'tutti'
+  })
   const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'dettaglio'
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
@@ -97,6 +117,7 @@ function PattiniView() {
     if (filtro === 'liberi') return !p.ID_Atleta && p.Stato !== 'Rotto'
     if (filtro === 'noleggiati') return !!p.ID_Atleta
     if (filtro === 'rotti') return p.Stato === 'Rotto'
+    if (filtro === 'da_pagare') return !!p.ID_Atleta && p.Stato_Pagamento !== 'Pagato'
     return true
   })
 
@@ -108,17 +129,22 @@ function PattiniView() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        {['tutti', 'liberi', 'noleggiati', 'rotti'].map(f => (
-          <button key={f} className={`btn ${filtro === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFiltro(f)} style={{ fontSize: '13px', padding: '6px 12px' }}>
-            {f.charAt(0).toUpperCase() + f.slice(1)}{' '}
-            <span style={{ opacity: 0.7 }}>
-              ({f === 'tutti' ? pattini.length
-                : f === 'liberi' ? pattini.filter(p => !p.ID_Atleta && p.Stato !== 'Rotto').length
-                : f === 'noleggiati' ? pattini.filter(p => p.ID_Atleta).length
-                : pattini.filter(p => p.Stato === 'Rotto').length})
-            </span>
-          </button>
-        ))}
+        {['tutti', 'liberi', 'noleggiati', 'da_pagare', 'rotti'].map(f => {
+          const labels = { tutti: 'Tutti', liberi: 'Liberi', noleggiati: 'Noleggiati', da_pagare: 'Da pagare', rotti: 'Rotti' }
+          const counts = {
+            tutti: pattini.length,
+            liberi: pattini.filter(p => !p.ID_Atleta && p.Stato !== 'Rotto').length,
+            noleggiati: pattini.filter(p => p.ID_Atleta).length,
+            da_pagare: pattini.filter(p => p.ID_Atleta && p.Stato_Pagamento !== 'Pagato').length,
+            rotti: pattini.filter(p => p.Stato === 'Rotto').length
+          }
+          return (
+            <button key={f} className={`btn ${filtro === f ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFiltro(f)} style={{ fontSize: '13px', padding: '6px 12px' }}>
+              {labels[f]}{' '}
+              <span style={{ opacity: 0.7 }}>({counts[f]})</span>
+            </button>
+          )
+        })}
       </div>
 
       <div className="card">

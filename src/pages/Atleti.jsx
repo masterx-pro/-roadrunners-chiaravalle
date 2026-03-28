@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -263,18 +263,56 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
           <label className="form-label">Numero di gara</label>
           <input className="form-input" value={form.numeroGara} onChange={e => update('numeroGara', e.target.value)} placeholder="es. 42" />
         </div>
+      </div>
+
+      <div className="section-title">Quota associativa</div>
+      <div className="card">
         <div className="form-group">
-          <label className="form-label">Quota personalizzata (€)</label>
-          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`Standard: ${PAGAMENTI_CONFIG.QUOTA_ANNUALE}€`} />
+          <label className="form-label">Importo quota (vuoto = standard €{PAGAMENTI_CONFIG.QUOTA_ANNUALE})</label>
+          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`} />
         </div>
         {titolo === 'Nuovo Atleta' && (
-          <div className="form-group">
-            <label className="form-label">Tipo rate</label>
-            <select className="form-input" value={form.tipoRate || '1'} onChange={e => update('tipoRate', e.target.value)}>
-              <option value="1">Annuale (unica soluzione)</option>
-              <option value="2">2 rate (semestrale)</option>
-            </select>
-          </div>
+          <>
+            <div className="form-group">
+              <label className="form-label">Modalità pagamento</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className={`badge ${form.tipoRate === '1' ? 'badge-danger' : 'badge-muted'}`}
+                  style={{ cursor: 'pointer', padding: '8px 16px', fontSize: '14px', border: 'none', flex: 1, justifyContent: 'center' }}
+                  onClick={() => update('tipoRate', '1')}
+                >
+                  Annuale
+                </button>
+                <button
+                  type="button"
+                  className={`badge ${form.tipoRate === '2' ? 'badge-danger' : 'badge-muted'}`}
+                  style={{ cursor: 'pointer', padding: '8px 16px', fontSize: '14px', border: 'none', flex: 1, justifyContent: 'center' }}
+                  onClick={() => update('tipoRate', '2')}
+                >
+                  2 rate
+                </button>
+              </div>
+            </div>
+            {form.tipoRate === '1' && (
+              <div className="form-group">
+                <label className="form-label">Scadenza rata unica</label>
+                <input className="form-input" type="date" value={form.scadRata1} onChange={e => update('scadRata1', e.target.value)} />
+              </div>
+            )}
+            {form.tipoRate === '2' && (
+              <>
+                <div className="form-group">
+                  <label className="form-label">Scadenza rata 1</label>
+                  <input className="form-input" type="date" value={form.scadRata1} onChange={e => update('scadRata1', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Scadenza rata 2</label>
+                  <input className="form-input" type="date" value={form.scadRata2} onChange={e => update('scadRata2', e.target.value)} />
+                </div>
+              </>
+            )}
+          </>
         )}
       </div>
 
@@ -375,7 +413,9 @@ function NuovoAtleta({ onBack, onSaved }) {
     genitoreEmail: '', scadCertificato: '', numeroFISR: '',
     scadFISR: '', dataIscrizione: new Date().toISOString().split('T')[0],
     note: '', noleggio: false, taglia: '', numeroGara: '',
-    quotaPersonalizzata: '', tipoRate: '1'
+    quotaPersonalizzata: '', tipoRate: '1',
+    scadRata1: `${new Date().getFullYear()}-10-15`,
+    scadRata2: `${new Date().getFullYear() + 1}-01-15`
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -418,8 +458,38 @@ function NuovoAtleta({ onBack, onSaved }) {
       const importoQuota = form.quotaPersonalizzata
         ? parseFloat(form.quotaPersonalizzata)
         : PAGAMENTI_CONFIG.QUOTA_ANNUALE
+      const anno = new Date().getFullYear()
+      const stagione = `${anno}/${anno + 1}`
       if (importoQuota > 0) {
-        await generaQuoteAtleta(idAtleta, `${form.nome} ${form.cognome}`, importoQuota, form.tipoRate || '1')
+        if (form.tipoRate === '1') {
+          await creaPagamento({
+            idAtleta,
+            tipo: 'Quota',
+            descrizione: `Quota associativa ${stagione}`,
+            importo: importoQuota,
+            stato: 'Da pagare',
+            dataScadenza: form.scadRata1,
+          })
+        } else {
+          const metaImporto = Math.ceil(importoQuota / 2)
+          await creaPagamento({
+            idAtleta,
+            tipo: 'Quota',
+            descrizione: `Quota ${stagione} — Rata 1/2`,
+            importo: metaImporto,
+            stato: 'Da pagare',
+            dataScadenza: form.scadRata1,
+          })
+          await creaPagamento({
+            idAtleta,
+            tipo: 'Quota',
+            descrizione: `Quota ${stagione} — Rata 2/2`,
+            importo: importoQuota - metaImporto,
+            stato: 'Da pagare',
+            dataScadenza: form.scadRata2,
+          })
+        }
+        await scriviLog('Quote generate', 'Atleta', `${form.nome} ${form.cognome}`)
       }
 
       setSuccesso(true)

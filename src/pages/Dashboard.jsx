@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet } from '../utils/sheetsApi'
+import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData, trimestreCorrente, scadenzaTrimestreCorrente, pattiniDaPagare } from '../utils/dateUtils'
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   const [atleti, setAtleti] = useState([])
   const [pattini, setPattini] = useState([])
   const [eventi, setEventi] = useState([])
+  const [pagamenti, setPagamenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [mostraResetTrimestre, setMostraResetTrimestre] = useState(false)
   const [resetInCorso, setResetInCorso] = useState(false)
@@ -14,10 +16,13 @@ export default function Dashboard() {
   useEffect(() => {
     async function carica() {
       try {
-        const [a, p, e] = await Promise.all([getAtleti(), getPattini(), getEventiSpeciali()])
+        const [a, p, e, pag] = await Promise.all([
+          getAtleti(), getPattini(), getEventiSpeciali(), leggiSheet(SHEETS.PAGAMENTI)
+        ])
         setAtleti(a)
         setPattini(p)
         setEventi(e)
+        setPagamenti(pag)
 
         // Controlla cambio trimestre
         const trim = trimestreCorrente()
@@ -111,27 +116,70 @@ export default function Dashboard() {
 
       {/* STATS */}
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => onNavigate?.('atleti')} style={{ cursor: 'pointer' }}>
           <div className="stat-value">{atletiAttivi.length}</div>
           <div className="stat-label">Atleti attivi</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: pattiniLiberi.length === 0 ? 'var(--accent)' : 'var(--accent-ok)' }}>
             {pattiniLiberi.length}
           </div>
           <div className="stat-label">Pattini liberi</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'noleggiati' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: 'var(--text-secondary)' }}>{pattiniNoleggiati.length}</div>
           <div className="stat-label">In noleggio</div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card" onClick={() => onNavigate?.('attrezzature', { tab: 'pattini', filtro: 'da_pagare' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: daPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
             {daPagare.length}
           </div>
-          <div className="stat-label">Da riscuotere</div>
+          <div className="stat-label">Noleggio da riscuotere</div>
         </div>
       </div>
+
+      {/* QUOTE ASSOCIATIVE */}
+      {(() => {
+        const quoteAssociative = pagamenti.filter(p => p.Tipo === 'Quota')
+        const quotePagate = quoteAssociative.filter(p => p.Stato === 'Pagato')
+        const quoteDaPagare = quoteAssociative.filter(p => p.Stato !== 'Pagato')
+        const totaleQuoteDovuto = quoteAssociative.reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
+        const totaleQuotePagato = quotePagate.reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
+
+        if (quoteAssociative.length === 0) return null
+
+        return (
+          <div className="card" style={{ marginBottom: '16px', cursor: 'pointer' }}
+            onClick={() => onNavigate?.('atleti')}
+          >
+            <div className="section-title" style={{ margin: '0 0 12px 0' }}>💳 Quote associative</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: 'var(--accent-ok)' }}>
+                    {quotePagate.length}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Pagate</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: quoteDaPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
+                    {quoteDaPagare.length}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Da pagare</div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700' }}>
+                  €{totaleQuotePagato}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  su €{totaleQuoteDovuto}
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* PROSSIMO EVENTO */}
       {prossimoEvento && (

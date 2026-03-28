@@ -50,7 +50,10 @@ export default function App() {
   return (
     <div className="app-layout">
       <div className="page-content">
-        {tab === 'home'         && <Dashboard />}
+        {tab === 'home'         && <Dashboard onNavigate={(sezione, filtro) => {
+          if (filtro) sessionStorage.setItem('dashboard_filtro', JSON.stringify(filtro))
+          navigaTab(sezione)
+        }} />}
         {tab === 'atleti'       && <Atleti />}
         {tab === 'attrezzature' && <Attrezzature />}
         {tab === 'calendario'   && <Calendario />}
