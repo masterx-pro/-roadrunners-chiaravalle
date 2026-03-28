@@ -422,6 +422,21 @@ export async function creaEvento(evento) {
   return id
 }
 
+export async function aggiornaEvento(evento) {
+  const eventi = await leggiSheet(SHEETS.EVENTI_SPECIALI)
+  const idx = eventi.findIndex(e => e.ID_Evento === evento.ID_Evento)
+  if (idx === -1) throw new Error('Evento non trovato')
+  await aggiornaRiga(SHEETS.EVENTI_SPECIALI, idx, [
+    evento.ID_Evento, evento.Titolo, evento.Data_Inizio, evento.Ora_Inizio,
+    evento.Data_Fine, evento.Ora_Fine, evento.Tipo, evento.Luogo,
+    evento.ID_Categoria || '', evento.Scad_Iscrizione || '',
+    evento.Scad_Pagamento || '', evento.Data_Convocati || '',
+    evento.Documenti_Richiesti || '', evento.Iscritti || '',
+    evento.Stato_Pagamento_Gara || 'Da pagare', evento.Note || ''
+  ])
+  await scriviLog('Modifica', 'Evento', `${evento.Titolo} — ${evento.ID_Evento}`)
+}
+
 export async function aggiornaStatoPagamentoGara(idEvento, stato) {
   const eventi = await leggiSheet(SHEETS.EVENTI_SPECIALI)
   const idx = eventi.findIndex(e => e.ID_Evento === idEvento)

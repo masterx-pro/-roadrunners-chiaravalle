@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -38,6 +38,20 @@ export default function Calendario() {
 
   if (loading) return <div className="loading-center">Caricamento...</div>
 
+  if (vista?.tipo === 'modificaEvento') {
+    return <ModificaEvento
+      evento={vista.dati}
+      onBack={() => setVista(null)}
+      onSaved={() => {
+        setVista(null)
+        setLoading(true)
+        Promise.all([getSlotFissi(), getEventiSpeciali(), getAtleti()]).then(([s, e, a]) => {
+          setSlotFissi(s); setEventi(e); setAtleti(a); setLoading(false)
+        })
+      }}
+    />
+  }
+
   if (vista?.tipo === 'nuovoEvento') {
     return <NuovoEvento onBack={() => setVista(null)} onSaved={() => {
       setVista(null)
@@ -61,6 +75,7 @@ export default function Calendario() {
         setEventi(prev => prev.map(e => e.ID_Evento === garaAggiornata.ID_Evento ? garaAggiornata : e))
         setVista({ tipo: 'gara', dati: garaAggiornata })
       }}
+      onEdit={(gara) => setVista({ tipo: 'modificaEvento', dati: gara })}
     />
   }
 
@@ -193,7 +208,7 @@ export default function Calendario() {
 // DETTAGLIO GARA con scadenze
 // ============================================================
 
-function DettaglioGara({ gara, atleti, onBack, onUpdate }) {
+function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [iscritti, setIscritti] = useState(
     gara.Iscritti ? gara.Iscritti.split(',').filter(Boolean) : []
   )
@@ -249,7 +264,10 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate }) {
             )}
             {gara.Luogo && <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>📍 {gara.Luogo}</p>}
           </div>
-          <span className={`badge ${gara.Tipo === 'Gara' ? 'badge-danger' : 'badge-warn'}`}>{gara.Tipo}</span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button className="btn btn-ghost" onClick={() => onEdit(gara)} style={{ padding: '6px 10px', fontSize: '13px' }}>✏️ Modifica</button>
+            <span className={`badge ${gara.Tipo === 'Gara' ? 'badge-danger' : 'badge-warn'}`}>{gara.Tipo}</span>
+          </div>
         </div>
       </div>
 
@@ -516,7 +534,7 @@ function NuovoEvento({ onBack, onSaved }) {
   const [errore, setErrore] = useState(null)
   const [form, setForm] = useState({
     titolo: '', dataInizio: '', oraInizio: '', dataFine: '', oraFine: '',
-    tipo: 'Gara', luogo: '', idCategoria: '', scadIscrizione: '',
+    tipo: 'Gara', luogo: '', idCategoria: [], scadIscrizione: '',
     scadPagamento: '', dataConvocati: '', documentiRichiesti: '', note: ''
   })
 
@@ -532,7 +550,7 @@ function NuovoEvento({ onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      await creaEvento(form)
+      await creaEvento({ ...form, idCategoria: form.idCategoria.join(',') })
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)
     } catch (err) {
@@ -578,13 +596,40 @@ function NuovoEvento({ onBack, onSaved }) {
           <input className="form-input" value={form.luogo} onChange={e => update('luogo', e.target.value)} placeholder="es. Palaghiaccio Milano" />
         </div>
         <div className="form-group">
-          <label className="form-label">Categoria (vuoto = tutte)</label>
-          <select className="form-input" value={form.idCategoria} onChange={e => update('idCategoria', e.target.value)}>
-            <option value="">— Tutte —</option>
-            {categorieAttive.map(c => (
-              <option key={c.ID_Categoria} value={c.ID_Categoria}>{c.Nome}</option>
-            ))}
-          </select>
+          <label className="form-label">Categorie (vuoto = tutte)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+            {categorieAttive.map(c => {
+              const isSelected = form.idCategoria.includes(c.ID_Categoria)
+              return (
+                <button
+                  key={c.ID_Categoria}
+                  type="button"
+                  className={`badge ${isSelected ? 'badge-danger' : 'badge-muted'}`}
+                  style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '13px', border: 'none', transition: 'all 0.2s' }}
+                  onClick={() => {
+                    setForm(prev => ({
+                      ...prev,
+                      idCategoria: isSelected
+                        ? prev.idCategoria.filter(id => id !== c.ID_Categoria)
+                        : [...prev.idCategoria, c.ID_Categoria]
+                    }))
+                  }}
+                >
+                  {isSelected ? '✓ ' : ''}{c.Nome}
+                </button>
+              )
+            })}
+          </div>
+          {form.idCategoria.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ marginTop: '6px', fontSize: '12px', padding: '4px 8px' }}
+              onClick={() => setForm(prev => ({ ...prev, idCategoria: [] }))}
+            >
+              Deseleziona tutte
+            </button>
+          )}
         </div>
       </div>
 
@@ -644,6 +689,208 @@ function NuovoEvento({ onBack, onSaved }) {
 
       <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginTop: '12px', marginBottom: '24px' }}>
         {saving ? 'Salvataggio...' : 'Crea evento'}
+      </button>
+    </div>
+  )
+}
+
+// ============================================================
+// MODIFICA EVENTO
+// ============================================================
+
+function ModificaEvento({ evento, onBack, onSaved }) {
+  const [categorie, setCategorie] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [successo, setSuccesso] = useState(false)
+  const [errore, setErrore] = useState(null)
+  const [form, setForm] = useState({
+    titolo: evento.Titolo || '',
+    dataInizio: evento.Data_Inizio || '',
+    oraInizio: evento.Ora_Inizio || '',
+    dataFine: evento.Data_Fine || '',
+    oraFine: evento.Ora_Fine || '',
+    tipo: evento.Tipo || 'Gara',
+    luogo: evento.Luogo || '',
+    idCategoria: evento.ID_Categoria ? evento.ID_Categoria.split(',').filter(Boolean) : [],
+    scadIscrizione: evento.Scad_Iscrizione || '',
+    scadPagamento: evento.Scad_Pagamento || '',
+    dataConvocati: evento.Data_Convocati || '',
+    documentiRichiesti: evento.Documenti_Richiesti || '',
+    note: evento.Note || ''
+  })
+
+  useEffect(() => { getCategorie().then(setCategorie) }, [])
+
+  const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
+
+  async function handleSalva() {
+    if (!form.titolo.trim()) {
+      setErrore('Il titolo è obbligatorio')
+      return
+    }
+    setSaving(true)
+    setErrore(null)
+    try {
+      await aggiornaEvento({
+        ID_Evento: evento.ID_Evento,
+        Titolo: form.titolo,
+        Data_Inizio: form.dataInizio,
+        Ora_Inizio: form.oraInizio,
+        Data_Fine: form.dataFine,
+        Ora_Fine: form.oraFine,
+        Tipo: form.tipo,
+        Luogo: form.luogo,
+        ID_Categoria: form.idCategoria.join(','),
+        Scad_Iscrizione: form.scadIscrizione,
+        Scad_Pagamento: form.scadPagamento,
+        Data_Convocati: form.dataConvocati,
+        Documenti_Richiesti: form.documentiRichiesti,
+        Iscritti: evento.Iscritti || '',
+        Stato_Pagamento_Gara: evento.Stato_Pagamento_Gara || 'Da pagare',
+        Note: form.note
+      })
+      setSuccesso(true)
+      setTimeout(() => onSaved(), 1500)
+    } catch (err) {
+      console.error(err)
+      setErrore('Errore durante il salvataggio')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (successo) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '300px', gap: '12px' }}>
+        <div style={{ fontSize: '48px' }}>✅</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', textTransform: 'uppercase', color: 'var(--accent-ok)' }}>Evento modificato</div>
+      </div>
+    )
+  }
+
+  const categorieAttive = categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()))
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Modifica Evento</h1>
+      </div>
+
+      <div className="card card-elevated" style={{ marginBottom: '16px', textAlign: 'center' }}>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{evento.ID_Evento}</div>
+      </div>
+
+      <div className="section-title">Informazioni</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Titolo *</label>
+          <input className="form-input" value={form.titolo} onChange={e => update('titolo', e.target.value)} placeholder="Nome evento" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Tipo</label>
+          <select className="form-input" value={form.tipo} onChange={e => update('tipo', e.target.value)}>
+            <option>Gara</option><option>Trasferta</option><option>Altro</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Luogo</label>
+          <input className="form-input" value={form.luogo} onChange={e => update('luogo', e.target.value)} placeholder="es. Palaghiaccio Milano" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Categorie (vuoto = tutte)</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+            {categorieAttive.map(c => {
+              const isSelected = form.idCategoria.includes(c.ID_Categoria)
+              return (
+                <button
+                  key={c.ID_Categoria}
+                  type="button"
+                  className={`badge ${isSelected ? 'badge-danger' : 'badge-muted'}`}
+                  style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '13px', border: 'none', transition: 'all 0.2s' }}
+                  onClick={() => {
+                    setForm(prev => ({
+                      ...prev,
+                      idCategoria: isSelected
+                        ? prev.idCategoria.filter(id => id !== c.ID_Categoria)
+                        : [...prev.idCategoria, c.ID_Categoria]
+                    }))
+                  }}
+                >
+                  {isSelected ? '✓ ' : ''}{c.Nome}
+                </button>
+              )
+            })}
+          </div>
+          {form.idCategoria.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ marginTop: '6px', fontSize: '12px', padding: '4px 8px' }}
+              onClick={() => setForm(prev => ({ ...prev, idCategoria: [] }))}
+            >
+              Deseleziona tutte
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="section-title">Date e orari</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Data inizio</label>
+          <input className="form-input" type="date" value={form.dataInizio} onChange={e => update('dataInizio', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Ora inizio</label>
+          <input className="form-input" type="time" value={form.oraInizio} onChange={e => update('oraInizio', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data fine</label>
+          <input className="form-input" type="date" value={form.dataFine} onChange={e => update('dataFine', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Ora fine</label>
+          <input className="form-input" type="time" value={form.oraFine} onChange={e => update('oraFine', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="section-title">Scadenze</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Scadenza iscrizione</label>
+          <input className="form-input" type="date" value={form.scadIscrizione} onChange={e => update('scadIscrizione', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Scadenza pagamento</label>
+          <input className="form-input" type="date" value={form.scadPagamento} onChange={e => update('scadPagamento', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Data convocati</label>
+          <input className="form-input" type="date" value={form.dataConvocati} onChange={e => update('dataConvocati', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="section-title">Extra</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Documenti richiesti</label>
+          <input className="form-input" value={form.documentiRichiesti} onChange={e => update('documentiRichiesti', e.target.value)} placeholder="es. Certificato medico, tessera FISR" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Note</label>
+          <textarea className="form-input" rows="3" value={form.note} onChange={e => update('note', e.target.value)} style={{ resize: 'vertical' }} />
+        </div>
+      </div>
+
+      {errore && (
+        <div className="card" style={{ borderColor: 'rgba(232,51,74,0.4)', marginTop: '8px' }}>
+          <div style={{ color: '#FF6B7A', fontSize: '14px', textAlign: 'center' }}>{errore}</div>
+        </div>
+      )}
+
+      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginTop: '12px', marginBottom: '24px' }}>
+        {saving ? 'Salvataggio...' : 'Salva modifiche'}
       </button>
     </div>
   )
