@@ -77,6 +77,15 @@ export async function getCategorie() {
   return leggiSheet(SHEETS.CATEGORIE)
 }
 
+export async function aggiornaCategoria(idx, cat) {
+  return aggiornaRiga(SHEETS.CATEGORIE, idx, [
+    cat.ID_Categoria, cat.Nome, cat.Fascia_Eta,
+    cat.Eta_Min, cat.Eta_Max, cat.Sesso,
+    cat.Tipi_Gara, cat.Metodo_Calcolo,
+    cat.Attiva === true || cat.Attiva === 'TRUE' ? 'TRUE' : 'FALSE'
+  ])
+}
+
 export async function getAtleta(id) {
   const atleti = await getAtleti()
   return atleti.find(a => a.ID_Atleta === id)

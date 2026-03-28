@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -488,35 +488,148 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
 // GESTIONE CATEGORIE
 // ============================================================
 
+function FormCategoria({ form, setForm, onSalva, saving, labelBottone }) {
+  const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
+  return (
+    <>
+      <div className="form-group">
+        <label className="form-label">Nome *</label>
+        <input className="form-input" value={form.nome} onChange={e => update('nome', e.target.value)} placeholder="es. Esordienti M" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Fascia eta (descrizione)</label>
+        <input className="form-input" value={form.fasciaEta} onChange={e => update('fasciaEta', e.target.value)} placeholder="es. 9-10 anni" />
+      </div>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Eta min</label>
+          <input className="form-input" type="number" value={form.etaMin} onChange={e => update('etaMin', e.target.value)} placeholder="9" />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Eta max</label>
+          <input className="form-input" type="number" value={form.etaMax} onChange={e => update('etaMax', e.target.value)} placeholder="10" />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Sesso</label>
+        <select className="form-input" value={form.sesso} onChange={e => update('sesso', e.target.value)}>
+          <option value="">— Nessuno —</option>
+          <option value="M">M</option>
+          <option value="F">F</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Tipi gara</label>
+        <input className="form-input" value={form.tipiGara} onChange={e => update('tipiGara', e.target.value)} placeholder="es. Velocita, Fondo" />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Metodo calcolo</label>
+        <input className="form-input" value={form.metodoCalcolo} onChange={e => update('metodoCalcolo', e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+        <span className="form-label" style={{ marginBottom: 0 }}>Attiva</span>
+        <button
+          className={`badge ${form.attiva ? 'badge-ok' : 'badge-muted'}`}
+          style={{ cursor: 'pointer', border: 'none' }}
+          onClick={() => update('attiva', !form.attiva)}
+        >
+          {form.attiva ? 'SI' : 'NO'}
+        </button>
+      </div>
+      <button className="btn btn-primary btn-full" onClick={onSalva} disabled={saving || !form.nome.trim()}>
+        {saving ? 'Salvataggio...' : labelBottone}
+      </button>
+    </>
+  )
+}
+
 function GestioneCategorie({ onBack }) {
   const [categorie, setCategorie] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [nome, setNome] = useState('')
-  const [fasciaEta, setFasciaEta] = useState('')
-  const [etaMin, setEtaMin] = useState('')
-  const [etaMax, setEtaMax] = useState('')
-  const [sesso, setSesso] = useState('')
-  const [attivo, setAttivo] = useState(true)
+  const [editIdx, setEditIdx] = useState(null) // indice categoria in modifica
+  const [editForm, setEditForm] = useState(null)
+  const [nuovoForm, setNuovoForm] = useState({
+    nome: '', fasciaEta: '', etaMin: '', etaMax: '', sesso: '', tipiGara: '', metodoCalcolo: '', attiva: true
+  })
 
-  useEffect(() => {
+  function ricarica() {
+    setLoading(true)
     getCategorie().then(c => { setCategorie(c); setLoading(false) })
-  }, [])
+  }
+
+  useEffect(() => { ricarica() }, [])
+
+  function apriModifica(c, idx) {
+    setEditIdx(idx)
+    setEditForm({
+      idCategoria: c.ID_Categoria,
+      nome: c.Nome || '',
+      fasciaEta: c.Fascia_Eta || '',
+      etaMin: c.Eta_Min || '',
+      etaMax: c.Eta_Max || '',
+      sesso: c.Sesso || '',
+      tipiGara: c.Tipi_Gara || '',
+      metodoCalcolo: c.Metodo_Calcolo || '',
+      attiva: c.Attiva === 'TRUE'
+    })
+  }
+
+  async function handleSalvaModifica() {
+    if (!editForm.nome.trim()) return
+    setSaving(true)
+    try {
+      await aggiornaCategoria(editIdx, {
+        ID_Categoria: editForm.idCategoria,
+        Nome: editForm.nome.trim(),
+        Fascia_Eta: editForm.fasciaEta.trim(),
+        Eta_Min: editForm.etaMin,
+        Eta_Max: editForm.etaMax,
+        Sesso: editForm.sesso,
+        Tipi_Gara: editForm.tipiGara,
+        Metodo_Calcolo: editForm.metodoCalcolo,
+        Attiva: editForm.attiva
+      })
+      await scriviLog('Modifica', 'Categoria', editForm.nome.trim())
+      setEditIdx(null)
+      setEditForm(null)
+      ricarica()
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function handleAggiungi() {
-    if (!nome.trim()) return
+    if (!nuovoForm.nome.trim()) return
     setSaving(true)
     try {
       const numero = categorie.length + 1
       const id = `CAT-${String(numero).padStart(2, '0')}`
-      // Colonne: ID_Categoria, Nome, Fascia_Eta, Attiva, Eta_Min, Eta_Max, Sesso, Tipi_Gara, Metodo_Calcolo
-      await aggiungiRiga(SHEETS.CATEGORIE, [id, nome.trim(), fasciaEta.trim(), attivo ? 'TRUE' : 'FALSE', etaMin, etaMax, sesso, '', ''])
-      const nuove = await getCategorie()
-      setCategorie(nuove)
-      setNome(''); setFasciaEta(''); setEtaMin(''); setEtaMax(''); setSesso(''); setAttivo(true)
+      await aggiungiRiga(SHEETS.CATEGORIE, [
+        id, nuovoForm.nome.trim(), nuovoForm.fasciaEta.trim(),
+        nuovoForm.etaMin, nuovoForm.etaMax, nuovoForm.sesso,
+        nuovoForm.tipiGara, nuovoForm.metodoCalcolo,
+        nuovoForm.attiva ? 'TRUE' : 'FALSE'
+      ])
+      setNuovoForm({ nome: '', fasciaEta: '', etaMin: '', etaMax: '', sesso: '', tipiGara: '', metodoCalcolo: '', attiva: true })
+      ricarica()
     } finally {
       setSaving(false)
     }
+  }
+
+  if (editIdx !== null && editForm) {
+    return (
+      <div>
+        <div className="page-header">
+          <button className="btn btn-ghost" onClick={() => { setEditIdx(null); setEditForm(null) }} style={{ padding: '8px 12px' }}>← Indietro</button>
+          <h1 className="page-title" style={{ fontSize: '22px' }}>Modifica Categoria</h1>
+        </div>
+        <div className="card">
+          <FormCategoria form={editForm} setForm={setEditForm} onSalva={handleSalvaModifica} saving={saving} labelBottone="Salva modifiche" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -536,9 +649,9 @@ function GestioneCategorie({ onBack }) {
                 <div className="empty-state-text">Nessuna categoria</div>
               </div>
             ) : (
-              categorie.map(c => (
+              categorie.map((c, i) => (
                 <div key={c.ID_Categoria} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: '600', fontSize: '15px' }}>{c.Nome}</div>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                       {c.Fascia_Eta || ''}
@@ -546,9 +659,12 @@ function GestioneCategorie({ onBack }) {
                       {c.Sesso ? ` · ${c.Sesso}` : ''}
                     </div>
                   </div>
-                  <span className={`badge ${c.Attiva === 'TRUE' ? 'badge-ok' : 'badge-danger'}`}>
-                    {c.Attiva === 'TRUE' ? 'Attiva' : 'Non attiva'}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    <span className={`badge ${['TRUE', 'true', 'True'].includes(c.Attiva?.trim()) ? 'badge-ok' : 'badge-danger'}`}>
+                      {['TRUE', 'true', 'True'].includes(c.Attiva?.trim()) ? 'Attiva' : 'Non attiva'}
+                    </span>
+                    <button className="btn btn-ghost" onClick={() => apriModifica(c, i)} style={{ padding: '4px 6px', fontSize: '13px', lineHeight: 1 }}>✏️</button>
+                  </div>
                 </div>
               ))
             )}
@@ -556,45 +672,7 @@ function GestioneCategorie({ onBack }) {
 
           <div className="section-title">Aggiungi categoria</div>
           <div className="card">
-            <div className="form-group">
-              <label className="form-label">Nome *</label>
-              <input className="form-input" value={nome} onChange={e => setNome(e.target.value)} placeholder="es. Esordienti M" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fascia eta (descrizione)</label>
-              <input className="form-input" value={fasciaEta} onChange={e => setFasciaEta(e.target.value)} placeholder="es. 9-10 anni" />
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Eta min</label>
-                <input className="form-input" type="number" value={etaMin} onChange={e => setEtaMin(e.target.value)} placeholder="9" />
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Eta max</label>
-                <input className="form-input" type="number" value={etaMax} onChange={e => setEtaMax(e.target.value)} placeholder="10" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Sesso</label>
-              <select className="form-input" value={sesso} onChange={e => setSesso(e.target.value)}>
-                <option value="">— Nessuno —</option>
-                <option value="M">M</option>
-                <option value="F">F</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <span className="form-label" style={{ marginBottom: 0 }}>Attiva</span>
-              <button
-                className={`badge ${attivo ? 'badge-ok' : 'badge-muted'}`}
-                style={{ cursor: 'pointer', border: 'none' }}
-                onClick={() => setAttivo(!attivo)}
-              >
-                {attivo ? 'SI' : 'NO'}
-              </button>
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleAggiungi} disabled={saving || !nome.trim()}>
-              {saving ? 'Salvataggio...' : 'Aggiungi'}
-            </button>
+            <FormCategoria form={nuovoForm} setForm={setNuovoForm} onSalva={handleAggiungi} saving={saving} labelBottone="Aggiungi" />
           </div>
         </>
       )}
