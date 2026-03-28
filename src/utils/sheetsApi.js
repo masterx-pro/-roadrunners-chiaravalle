@@ -187,10 +187,10 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
 
     if (idCategoriaAttuale !== idCategoriaCorretta || !nomeCategoriaAttuale) {
       try {
-        await aggiornaRiga(SHEETS.ATLETI, i, buildAtletaRow(atleta, {
+        await aggiornaAtletaSicuro(atleta.ID_Atleta, {
           ID_Categoria: idCategoriaCorretta,
           Nome_Categoria: nomeCategoriaCorretto
-        }))
+        })
         atleta.ID_Categoria = idCategoriaCorretta
         atleta.Nome_Categoria = nomeCategoriaCorretto
         aggiornati++
@@ -207,11 +207,17 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
   return aggiornati
 }
 
-export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
-  const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
+export async function aggiornaAtletaSicuro(idAtleta, overrides) {
+  const atletiSheet = await leggiSheet(SHEETS.ATLETI)
+  const idx = atletiSheet.findIndex(a => a.ID_Atleta === idAtleta)
   if (idx === -1) throw new Error('Atleta non trovato')
-  const a = atleti[idx]
-  return aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(a, { Numero_Gara: nuovoNumero }))
+  const atletaFresco = atletiSheet[idx]
+  await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atletaFresco, overrides))
+  return atletaFresco
+}
+
+export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
+  return aggiornaAtletaSicuro(idAtleta, { Numero_Gara: nuovoNumero })
 }
 
 // ============================================================
@@ -377,18 +383,60 @@ export async function getStoricoPattinoById(idPattino) {
 // GOOGLE DRIVE — cartelle e file
 // ============================================================
 
-export async function creaCartellaAtleta(nomeAtleta, idAtleta) {
+export async function creaCartellaAtleta(atleta) {
+  const token = getToken()
+  const nomeCartella = `${atleta.Nome}_${atleta.Cognome}_${atleta.ID_Atleta}`.replace(/\s+/g, '_')
+  const parentId = GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID
+
+  // Cerca se la cartella esiste già (per nome esatto o per ID atleta nel nome)
+  try {
+    const searchRes = await fetch(
+      `${DRIVE_URL}/files?q='${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    const searchData = await searchRes.json()
+    const cartellaTrovata = (searchData.files || []).find(f =>
+      f.name === nomeCartella || f.name.includes(atleta.ID_Atleta)
+    )
+    if (cartellaTrovata) {
+      return cartellaTrovata.id
+    }
+  } catch (e) {
+    console.error('Errore ricerca cartella atleta:', e)
+  }
+
+  // Non esiste, creala
   const res = await fetch(`${DRIVE_URL}/files`, {
     method: 'POST',
     headers: authHeaders(),
     body: JSON.stringify({
-      name: `${nomeAtleta}_${idAtleta}`,
+      name: nomeCartella,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID || GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID]
+      parents: [parentId]
     })
   })
   const data = await res.json()
   return data.id
+}
+
+export async function creaCartelleMancanti(atleti) {
+  let creati = 0
+  for (const atleta of atleti) {
+    if (!['TRUE', 'true', 'True'].includes(atleta.Attivo?.trim())) continue
+    if (atleta.Drive_Folder_ID) continue
+    try {
+      const folderId = await creaCartellaAtleta(atleta)
+      await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+      atleta.Drive_Folder_ID = folderId
+      creati++
+    } catch (err) {
+      console.error('Errore creazione cartella per', atleta.Nome, atleta.Cognome, err)
+    }
+  }
+  if (creati > 0) {
+    await scriviLog('Auto', 'Cartelle Drive', `${creati} cartelle create`)
+  }
+  return creati
 }
 
 export async function caricaDocumento(file, nomefile, idCartella) {

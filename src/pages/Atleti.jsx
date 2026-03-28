@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -54,6 +54,11 @@ export default function Atleti({ nav }) {
         await aggiornaCategorieBatch(a, c)
       } catch (err) {
         console.error('Errore aggiornamento categorie:', err)
+      }
+      try {
+        await creaCartelleMancanti(a)
+      } catch (err) {
+        console.error('Errore creazione cartelle mancanti:', err)
       }
       setAtleti(a)
       setPattini(p)
@@ -511,13 +516,9 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
 
       // Crea cartella Drive e aggiorna riga atleta
       try {
-        const driveFolderId = await creaCartellaAtleta(`${form.nome}_${form.cognome}`, idAtleta)
+        const driveFolderId = await creaCartellaAtleta({ Nome: form.nome, Cognome: form.cognome, ID_Atleta: idAtleta })
         if (driveFolderId) {
-          const tuttiAtleti = await getAtleti()
-          const idx = tuttiAtleti.findIndex(a => a.ID_Atleta === idAtleta)
-          if (idx !== -1) {
-            await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(tuttiAtleti[idx], { Drive_Folder_ID: driveFolderId }))
-          }
+          await aggiornaAtletaSicuro(idAtleta, { Drive_Folder_ID: driveFolderId })
         }
       } catch (err) {
         console.error('Errore creazione cartella Drive:', err)
@@ -636,10 +637,7 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-      if (idx === -1) throw new Error('Atleta non trovato')
-
-      const valori = buildAtletaRow(atleta, {
+      await aggiornaAtletaSicuro(atleta.ID_Atleta, {
         Nome: form.nome, Cognome: form.cognome, Sesso: form.sesso,
         Luogo_Nascita: form.luogoNascita, Data_Nascita: form.dataNascita,
         Codice_Fiscale: form.codiceFiscale, ID_Categoria: form.idCategoria,
@@ -650,8 +648,6 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
         Note: form.note, Numero_Gara: form.numeroGara,
         Quota_Personalizzata: form.quotaPersonalizzata
       })
-
-      await aggiornaRiga(SHEETS.ATLETI, idx, valori)
       await scriviLog('Modifica', 'Atleta', `${form.nome} ${form.cognome}`)
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)
@@ -965,7 +961,6 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
   const [confermaDisattiva, setConfermaDisattiva] = useState(false)
   const [disattivando, setDisattivando] = useState(false)
   const [folderId, setFolderId] = useState(atleta.Drive_Folder_ID || '')
-  const [creandoCartella, setCreandoCartella] = useState(false)
   const [nuovoDocForm, setNuovoDocForm] = useState(false)
   const [nuovoDocNome, setNuovoDocNome] = useState('')
   const [nuovoDocFile, setNuovoDocFile] = useState(null)
@@ -1010,6 +1005,15 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
       listaDocumentiAtleta(folderId)
         .then(setDocumenti)
         .finally(() => setLoadingDocs(false))
+    } else {
+      // Crea automaticamente la cartella se manca
+      creaCartellaAtleta(atleta).then(async (newFolderId) => {
+        if (newFolderId) {
+          atleta.Drive_Folder_ID = newFolderId
+          await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: newFolderId })
+          setFolderId(newFolderId)
+        }
+      }).catch(err => console.error('Errore creazione cartella:', err))
     }
   }, [folderId])
 
@@ -1021,24 +1025,6 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
     return documenti.filter(d =>
       !PREFISSI_CATEGORIA.some(p => d.name?.toLowerCase().startsWith(p))
     )
-  }
-
-  async function handleCreaCartella() {
-    setCreandoCartella(true)
-    try {
-      const newFolderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
-      if (newFolderId) {
-        const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-        if (idx !== -1) {
-          await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleti[idx], { Drive_Folder_ID: newFolderId }))
-        }
-        setFolderId(newFolderId)
-      }
-    } catch (err) {
-      console.error('Errore creazione cartella:', err)
-    } finally {
-      setCreandoCartella(false)
-    }
   }
 
   async function handleCaricaDocCategoria(catKey, e) {
@@ -1214,13 +1200,8 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
       <div className="section-title">Documenti</div>
       <div className="card">
         {!folderId ? (
-          <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
-              Cartella Drive non configurata
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleCreaCartella} disabled={creandoCartella}>
-              {creandoCartella ? 'Creazione...' : 'Crea cartella documenti'}
-            </button>
+          <div style={{ textAlign: 'center', padding: '8px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
+            Creazione cartella in corso...
           </div>
         ) : loadingDocs ? (
           <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
@@ -1327,9 +1308,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
             <button className="btn btn-primary" disabled={disattivando} onClick={async () => {
               setDisattivando(true)
               try {
-                const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-                if (idx === -1) throw new Error('Atleta non trovato')
-                await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Attivo: 'FALSE' }))
+                await aggiornaAtletaSicuro(atleta.ID_Atleta, { Attivo: 'FALSE' })
                 await scriviLog('Disattivazione', 'Atleta', `${atleta.Nome} ${atleta.Cognome}`)
                 onDisattivato()
               } catch (err) {
@@ -1378,14 +1357,11 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
   async function handleSalva() {
     setSaving(true)
     try {
-      const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-      if (idx === -1) throw new Error('Atleta non trovato')
-      const valori = buildAtletaRow(atleta, {
+      await aggiornaAtletaSicuro(atleta.ID_Atleta, {
         Scad_Certificato: scadCert,
         Scad_FISR: scadFISR,
         Numero_FISR: numeroFISR
       })
-      await aggiornaRiga(SHEETS.ATLETI, idx, valori)
       await scriviLog('Modifica', 'Scadenze', `${atleta.Nome} ${atleta.Cognome}`)
       onSaved()
     } catch (err) {
@@ -1401,9 +1377,9 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
     try {
       let folderId = atleta.Drive_Folder_ID
       if (!folderId) {
-        folderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
-        const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-        await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Drive_Folder_ID: folderId }))
+        folderId = await creaCartellaAtleta(atleta)
+        atleta.Drive_Folder_ID = folderId
+        await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
       }
       const fileFinale = await comprimiImmagine(file)
       const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
@@ -1612,9 +1588,9 @@ function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
     if (!file) return
     let folderId = atleta.Drive_Folder_ID
     if (!folderId) {
-      folderId = await creaCartellaAtleta(`${atleta.Nome}_${atleta.Cognome}`, atleta.ID_Atleta)
-      const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
-      await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Drive_Folder_ID: folderId }))
+      folderId = await creaCartellaAtleta(atleta)
+      atleta.Drive_Folder_ID = folderId
+      await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
     }
     const fileFinale = await comprimiImmagine(file)
     const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
