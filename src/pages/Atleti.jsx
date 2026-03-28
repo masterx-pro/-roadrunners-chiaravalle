@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -35,7 +35,12 @@ export default function Atleti() {
 
   function ricarica() {
     setLoading(true)
-    Promise.all([getAtleti(), getPattini(), getCategorie()]).then(([a, p, c]) => {
+    Promise.all([getAtleti(), getPattini(), getCategorie()]).then(async ([a, p, c]) => {
+      try {
+        await aggiornaCategorieBatch(a, c)
+      } catch (err) {
+        console.error('Errore aggiornamento categorie:', err)
+      }
       setAtleti(a)
       setPattini(p)
       setCategorie(c)
@@ -253,11 +258,6 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
               <option key={c.ID_Categoria} value={c.ID_Categoria}>{c.Nome}</option>
             ))}
           </select>
-          {categoriaSuggerita && (
-            <div style={{ color: 'var(--accent-ok)', fontSize: '12px', marginTop: '4px' }}>
-              Categoria suggerita per eta: {categoriaSuggerita.Nome}
-            </div>
-          )}
         </div>
         <div className="form-group">
           <label className="form-label">Numero di gara</label>
@@ -563,7 +563,7 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
         Nome: form.nome, Cognome: form.cognome, Sesso: form.sesso,
         Luogo_Nascita: form.luogoNascita, Data_Nascita: form.dataNascita,
         Codice_Fiscale: form.codiceFiscale, ID_Categoria: form.idCategoria,
-        Genitore_Nome: form.genitoreNome, Nome_Categoria: '',
+        Genitore_Nome: form.genitoreNome, Nome_Categoria: atleta.Nome_Categoria || '',
         Genitore_Telefono: form.genitoreTelefono, Genitore_Email: form.genitoreEmail,
         Scad_Certificato: form.scadCertificato, Scad_FISR: form.scadFISR,
         Numero_FISR: form.numeroFISR, Data_Iscrizione: form.dataIscrizione,

@@ -130,6 +130,55 @@ export async function creaAtleta(atleta) {
   return id
 }
 
+export async function aggiornaCategorieBatch(atleti, categorie) {
+  const oggi = new Date()
+  let aggiornati = 0
+
+  const categorieAttive = categorie.filter(c =>
+    ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
+  )
+
+  for (let i = 0; i < atleti.length; i++) {
+    const atleta = atleti[i]
+    if (!atleta.Data_Nascita || !atleta.Sesso) continue
+    if (!['TRUE', 'true', 'True'].includes(atleta.Attivo?.trim())) continue
+
+    const nascita = new Date(atleta.Data_Nascita)
+    let eta = oggi.getFullYear() - nascita.getFullYear()
+    if (oggi.getMonth() < nascita.getMonth() || (oggi.getMonth() === nascita.getMonth() && oggi.getDate() < nascita.getDate())) {
+      eta--
+    }
+
+    const sesso = atleta.Sesso?.trim().toUpperCase()
+    const categoriaCorretta = categorieAttive.find(c => {
+      const catSesso = c.Sesso?.trim().toUpperCase()
+      const etaMin = parseInt(c.Età_Min || c.Eta_Min || '0')
+      const etaMax = parseInt(c.Età_Max || c.Eta_Max || '99')
+      return catSesso === sesso && eta >= etaMin && eta <= etaMax
+    })
+
+    if (!categoriaCorretta) continue
+
+    const idCategoriaCorretta = categoriaCorretta.ID_Categoria
+    if (!idCategoriaCorretta) continue
+    if (atleta.ID_Categoria?.trim() === idCategoriaCorretta) continue
+
+    const nomeCategoria = categoriaCorretta.Nome || ''
+    await aggiornaRiga(SHEETS.ATLETI, i, buildAtletaRow(atleta, {
+      ID_Categoria: idCategoriaCorretta,
+      Nome_Categoria: nomeCategoria
+    }))
+    atleta.ID_Categoria = idCategoriaCorretta
+    atleta.Nome_Categoria = nomeCategoria
+    aggiornati++
+  }
+
+  if (aggiornati > 0) {
+    await scriviLog('Auto', 'Categorie', `${aggiornati} atleti aggiornati per età`)
+  }
+  return aggiornati
+}
+
 export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
   const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
   if (idx === -1) throw new Error('Atleta non trovato')
