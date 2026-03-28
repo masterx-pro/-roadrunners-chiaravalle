@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -11,6 +11,7 @@ export default function Atleti() {
   const [loading, setLoading] = useState(true)
   const [cerca, setCerca] = useState('')
   const [filtroCategoria, setFiltroCategoria] = useState('tutte')
+  const [filtroSesso, setFiltroSesso] = useState('tutti')
   const [mostraExport, setMostraExport] = useState(false)
   const [atletaSelezionato, setAtletaSelezionato] = useState(null)
   const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'categorie' | 'modifica'
@@ -68,9 +69,13 @@ export default function Atleti() {
 
   const categorieAttive = categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()))
 
+  // Nomi categoria unici (senza sesso) per il filtro
+  const nomiCategoriaUnici = [...new Set(categorieAttive.map(c => c.Nome?.replace(/ [MF]$/, '')))]
+
   const atletiFiltrati = atleti
     .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
-    .filter(a => filtroCategoria === 'tutte' || a.Nome_Categoria === filtroCategoria)
+    .filter(a => filtroSesso === 'tutti' || a.Sesso === filtroSesso)
+    .filter(a => filtroCategoria === 'tutte' || a.Nome_Categoria === filtroCategoria || a.Nome_Categoria?.replace(/ [MF]$/, '') === filtroCategoria)
     .filter(a => {
       const nome = `${a.Nome} ${a.Cognome}`.toLowerCase()
       return nome.includes(cerca.toLowerCase())
@@ -110,6 +115,19 @@ export default function Atleti() {
         />
       </div>
 
+      {/* Filtro sesso */}
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+        {['tutti', 'M', 'F'].map(s => (
+          <button
+            key={s}
+            className={`btn ${filtroSesso === s ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setFiltroSesso(filtroSesso === s ? 'tutti' : s)}
+            style={{ padding: '4px 10px', fontSize: '12px' }}
+          >{s === 'tutti' ? 'Tutti' : s === 'M' ? 'Maschi' : 'Femmine'}</button>
+        ))}
+      </div>
+
+      {/* Filtro categorie */}
       {categorieAttive.length > 0 && (
         <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
           <button
@@ -117,13 +135,13 @@ export default function Atleti() {
             onClick={() => setFiltroCategoria('tutte')}
             style={{ padding: '4px 10px', fontSize: '12px' }}
           >Tutte</button>
-          {categorieAttive.map(c => (
+          {nomiCategoriaUnici.map(nome => (
             <button
-              key={c.ID_Categoria}
-              className={`btn ${filtroCategoria === c.Nome ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setFiltroCategoria(filtroCategoria === c.Nome ? 'tutte' : c.Nome)}
+              key={nome}
+              className={`btn ${filtroCategoria === nome ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFiltroCategoria(filtroCategoria === nome ? 'tutte' : nome)}
               style={{ padding: '4px 10px', fontSize: '12px' }}
-            >{c.Nome}</button>
+            >{nome}</button>
           ))}
         </div>
       )}
@@ -148,7 +166,31 @@ export default function Atleti() {
 // FORM ATLETA (condiviso tra Nuovo e Modifica)
 // ============================================================
 
+function calcolaCategoriaSuggerita(dataNascita, sesso, categorie) {
+  if (!dataNascita || !sesso) return null
+  const oggi = new Date()
+  const nascita = new Date(dataNascita)
+  const eta = oggi.getFullYear() - nascita.getFullYear()
+
+  const cat = categorie.find(c =>
+    c.Sesso === sesso &&
+    parseInt(c.Eta_Min) <= eta &&
+    eta <= parseInt(c.Eta_Max) &&
+    ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
+  )
+  return cat || null
+}
+
 function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, errore, mostraNoleggio = true }) {
+  const categoriaSuggerita = calcolaCategoriaSuggerita(form.dataNascita, form.sesso, categorie)
+
+  // Auto-preseleziona categoria quando cambia suggerimento
+  useEffect(() => {
+    if (categoriaSuggerita && !form.idCategoria) {
+      update('idCategoria', categoriaSuggerita.ID_Categoria)
+    }
+  }, [categoriaSuggerita?.ID_Categoria])
+
   return (
     <div>
       <div className="page-header">
@@ -167,6 +209,18 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
           <input className="form-input" value={form.cognome} onChange={e => update('cognome', e.target.value)} />
         </div>
         <div className="form-group">
+          <label className="form-label">Sesso *</label>
+          <select className="form-input" value={form.sesso} onChange={e => update('sesso', e.target.value)}>
+            <option value="">— Seleziona —</option>
+            <option value="M">M</option>
+            <option value="F">F</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Luogo di nascita</label>
+          <input className="form-input" value={form.luogoNascita} onChange={e => update('luogoNascita', e.target.value)} />
+        </div>
+        <div className="form-group">
           <label className="form-label">Data di nascita</label>
           <input className="form-input" type="date" value={form.dataNascita} onChange={e => update('dataNascita', e.target.value)} />
         </div>
@@ -182,10 +236,11 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
               <option key={c.ID_Categoria} value={c.ID_Categoria}>{c.Nome}</option>
             ))}
           </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Data iscrizione</label>
-          <input className="form-input" type="date" value={form.dataIscrizione} onChange={e => update('dataIscrizione', e.target.value)} />
+          {categoriaSuggerita && (
+            <div style={{ color: 'var(--accent-ok)', fontSize: '12px', marginTop: '4px' }}>
+              Categoria suggerita per eta: {categoriaSuggerita.Nome}
+            </div>
+          )}
         </div>
         <div className="form-group">
           <label className="form-label">Numero di gara</label>
@@ -209,7 +264,7 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
         </div>
       </div>
 
-      <div className="section-title">Documenti</div>
+      <div className="section-title">Scadenze</div>
       <div className="card">
         <div className="form-group">
           <label className="form-label">Scadenza certificato medico</label>
@@ -222,6 +277,14 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
         <div className="form-group">
           <label className="form-label">Scadenza FISR</label>
           <input className="form-input" type="date" value={form.scadFISR} onChange={e => update('scadFISR', e.target.value)} />
+        </div>
+      </div>
+
+      <div className="section-title">Altro</div>
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label">Data iscrizione</label>
+          <input className="form-input" type="date" value={form.dataIscrizione} onChange={e => update('dataIscrizione', e.target.value)} />
         </div>
       </div>
 
@@ -277,7 +340,7 @@ function NuovoAtleta({ onBack, onSaved }) {
   const [successo, setSuccesso] = useState(false)
   const [errore, setErrore] = useState(null)
   const [form, setForm] = useState({
-    nome: '', cognome: '', dataNascita: '', codiceFiscale: '',
+    nome: '', cognome: '', sesso: '', luogoNascita: '', dataNascita: '', codiceFiscale: '',
     idCategoria: '', genitoreNome: '', genitoreTelefono: '',
     genitoreEmail: '', scadCertificato: '', numeroFISR: '',
     scadFISR: '', dataIscrizione: new Date().toISOString().split('T')[0],
@@ -289,8 +352,8 @@ function NuovoAtleta({ onBack, onSaved }) {
   const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
 
   async function handleSalva() {
-    if (!form.nome.trim() || !form.cognome.trim()) {
-      setErrore('Nome e Cognome sono obbligatori')
+    if (!form.nome.trim() || !form.cognome.trim() || !form.sesso) {
+      setErrore('Nome, Cognome e Sesso sono obbligatori')
       return
     }
     setSaving(true)
@@ -305,18 +368,7 @@ function NuovoAtleta({ onBack, onSaved }) {
           const tuttiAtleti = await getAtleti()
           const idx = tuttiAtleti.findIndex(a => a.ID_Atleta === idAtleta)
           if (idx !== -1) {
-            const a = tuttiAtleti[idx]
-            const valori = [
-              a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita,
-              a.Codice_Fiscale || '', a.ID_Categoria || '',
-              a.Genitore_Nome || '', a.Nome_Categoria || '',
-              a.Genitore_Telefono || '', a.Genitore_Email || '',
-              a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
-              driveFolderId,
-              a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-              a.Note || '', a.Numero_Gara || ''
-            ]
-            await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+            await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(tuttiAtleti[idx], { Drive_Folder_ID: driveFolderId }))
           }
         }
       } catch (err) {
@@ -365,6 +417,8 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
   const [form, setForm] = useState({
     nome: atleta.Nome || '',
     cognome: atleta.Cognome || '',
+    sesso: atleta.Sesso || '',
+    luogoNascita: atleta.Luogo_Nascita || '',
     dataNascita: atleta.Data_Nascita || '',
     codiceFiscale: atleta.Codice_Fiscale || '',
     idCategoria: atleta.ID_Categoria || '',
@@ -385,8 +439,8 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
   const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
 
   async function handleSalva() {
-    if (!form.nome.trim() || !form.cognome.trim()) {
-      setErrore('Nome e Cognome sono obbligatori')
+    if (!form.nome.trim() || !form.cognome.trim() || !form.sesso) {
+      setErrore('Nome, Cognome e Sesso sono obbligatori')
       return
     }
     setSaving(true)
@@ -395,16 +449,16 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
       const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
       if (idx === -1) throw new Error('Atleta non trovato')
 
-      const valori = [
-        atleta.ID_Atleta, form.nome, form.cognome, form.dataNascita,
-        form.codiceFiscale || '', form.idCategoria || '',
-        form.genitoreNome || '', '', // Nome_Categoria — calcolato da formula
-        form.genitoreTelefono || '', form.genitoreEmail || '',
-        form.scadCertificato || '', form.scadFISR || '', form.numeroFISR || '',
-        atleta.Drive_Folder_ID || '',
-        atleta.Attivo || 'TRUE', form.dataIscrizione || '',
-        form.note || '', form.numeroGara || ''
-      ]
+      const valori = buildAtletaRow(atleta, {
+        Nome: form.nome, Cognome: form.cognome, Sesso: form.sesso,
+        Luogo_Nascita: form.luogoNascita, Data_Nascita: form.dataNascita,
+        Codice_Fiscale: form.codiceFiscale, ID_Categoria: form.idCategoria,
+        Genitore_Nome: form.genitoreNome, Nome_Categoria: '',
+        Genitore_Telefono: form.genitoreTelefono, Genitore_Email: form.genitoreEmail,
+        Scad_Certificato: form.scadCertificato, Scad_FISR: form.scadFISR,
+        Numero_FISR: form.numeroFISR, Data_Iscrizione: form.dataIscrizione,
+        Note: form.note, Numero_Gara: form.numeroGara
+      })
 
       await aggiornaRiga(SHEETS.ATLETI, idx, valori)
       await scriviLog('Modifica', 'Atleta', `${form.nome} ${form.cognome}`)
@@ -440,6 +494,9 @@ function GestioneCategorie({ onBack }) {
   const [saving, setSaving] = useState(false)
   const [nome, setNome] = useState('')
   const [fasciaEta, setFasciaEta] = useState('')
+  const [etaMin, setEtaMin] = useState('')
+  const [etaMax, setEtaMax] = useState('')
+  const [sesso, setSesso] = useState('')
   const [attivo, setAttivo] = useState(true)
 
   useEffect(() => {
@@ -452,12 +509,11 @@ function GestioneCategorie({ onBack }) {
     try {
       const numero = categorie.length + 1
       const id = `CAT-${String(numero).padStart(2, '0')}`
-      await aggiungiRiga(SHEETS.CATEGORIE, [id, nome.trim(), fasciaEta.trim(), attivo ? 'TRUE' : 'FALSE'])
+      // Colonne: ID_Categoria, Nome, Fascia_Eta, Attiva, Eta_Min, Eta_Max, Sesso, Tipi_Gara, Metodo_Calcolo
+      await aggiungiRiga(SHEETS.CATEGORIE, [id, nome.trim(), fasciaEta.trim(), attivo ? 'TRUE' : 'FALSE', etaMin, etaMax, sesso, '', ''])
       const nuove = await getCategorie()
       setCategorie(nuove)
-      setNome('')
-      setFasciaEta('')
-      setAttivo(true)
+      setNome(''); setFasciaEta(''); setEtaMin(''); setEtaMax(''); setSesso(''); setAttivo(true)
     } finally {
       setSaving(false)
     }
@@ -484,7 +540,11 @@ function GestioneCategorie({ onBack }) {
                 <div key={c.ID_Categoria} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontWeight: '600', fontSize: '15px' }}>{c.Nome}</div>
-                    {c.Fascia_Eta && <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{c.Fascia_Eta}</div>}
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      {c.Fascia_Eta || ''}
+                      {c.Eta_Min && c.Eta_Max ? ` (${c.Eta_Min}-${c.Eta_Max} anni)` : ''}
+                      {c.Sesso ? ` · ${c.Sesso}` : ''}
+                    </div>
                   </div>
                   <span className={`badge ${c.Attiva === 'TRUE' ? 'badge-ok' : 'badge-danger'}`}>
                     {c.Attiva === 'TRUE' ? 'Attiva' : 'Non attiva'}
@@ -498,11 +558,29 @@ function GestioneCategorie({ onBack }) {
           <div className="card">
             <div className="form-group">
               <label className="form-label">Nome *</label>
-              <input className="form-input" value={nome} onChange={e => setNome(e.target.value)} placeholder="es. Agonismo avanzato" />
+              <input className="form-input" value={nome} onChange={e => setNome(e.target.value)} placeholder="es. Esordienti M" />
             </div>
             <div className="form-group">
-              <label className="form-label">Fascia eta</label>
-              <input className="form-input" value={fasciaEta} onChange={e => setFasciaEta(e.target.value)} placeholder="es. 10-14 anni" />
+              <label className="form-label">Fascia eta (descrizione)</label>
+              <input className="form-input" value={fasciaEta} onChange={e => setFasciaEta(e.target.value)} placeholder="es. 9-10 anni" />
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Eta min</label>
+                <input className="form-input" type="number" value={etaMin} onChange={e => setEtaMin(e.target.value)} placeholder="9" />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Eta max</label>
+                <input className="form-input" type="number" value={etaMax} onChange={e => setEtaMax(e.target.value)} placeholder="10" />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Sesso</label>
+              <select className="form-input" value={sesso} onChange={e => setSesso(e.target.value)}>
+                <option value="">— Nessuno —</option>
+                <option value="M">M</option>
+                <option value="F">F</option>
+              </select>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
               <span className="form-label" style={{ marginBottom: 0 }}>Attiva</span>
@@ -648,18 +726,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       if (newFolderId) {
         const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
         if (idx !== -1) {
-          const a = atleti[idx]
-          const valori = [
-            a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita,
-            a.Codice_Fiscale || '', a.ID_Categoria || '',
-            a.Genitore_Nome || '', a.Nome_Categoria || '',
-            a.Genitore_Telefono || '', a.Genitore_Email || '',
-            a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
-            newFolderId,
-            a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-            a.Note || '', a.Numero_Gara || ''
-          ]
-          await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+          await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleti[idx], { Drive_Folder_ID: newFolderId }))
         }
         setFolderId(newFolderId)
       }
@@ -745,10 +812,12 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       {/* DATI PERSONALI */}
       <div className="section-title">Dati personali</div>
       <div className="card">
-        <InfoRow label="Data di nascita" value={formattaData(atleta.Data_Nascita)} />
-        <InfoRow label="Codice fiscale"  value={atleta.Codice_Fiscale || '—'} />
-        <InfoRow label="Numero di gara"  value={atleta.Numero_Gara || '—'} />
-        <InfoRow label="Iscritto dal"    value={formattaData(atleta.Data_Iscrizione)} />
+        <InfoRow label="Sesso"            value={atleta.Sesso || '—'} />
+        <InfoRow label="Luogo di nascita" value={atleta.Luogo_Nascita || '—'} />
+        <InfoRow label="Data di nascita"  value={formattaData(atleta.Data_Nascita)} />
+        <InfoRow label="Codice fiscale"   value={atleta.Codice_Fiscale || '—'} />
+        <InfoRow label="Numero di gara"   value={atleta.Numero_Gara || '—'} />
+        <InfoRow label="Iscritto dal"     value={formattaData(atleta.Data_Iscrizione)} />
       </div>
 
       {/* CONTATTI */}
@@ -919,17 +988,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
               try {
                 const idx = atleti.findIndex(a => a.ID_Atleta === atleta.ID_Atleta)
                 if (idx === -1) throw new Error('Atleta non trovato')
-                const valori = [
-                  atleta.ID_Atleta, atleta.Nome, atleta.Cognome, atleta.Data_Nascita,
-                  atleta.Codice_Fiscale || '', atleta.ID_Categoria || '',
-                  atleta.Genitore_Nome || '', atleta.Nome_Categoria || '',
-                  atleta.Genitore_Telefono || '', atleta.Genitore_Email || '',
-                  atleta.Scad_Certificato || '', atleta.Scad_FISR || '', atleta.Numero_FISR || '',
-                  atleta.Drive_Folder_ID || '',
-                  'FALSE', atleta.Data_Iscrizione || '',
-                  atleta.Note || '', atleta.Numero_Gara || ''
-                ]
-                await aggiornaRiga(SHEETS.ATLETI, idx, valori)
+                await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atleta, { Attivo: 'FALSE' }))
                 await scriviLog('Disattivazione', 'Atleta', `${atleta.Nome} ${atleta.Cognome}`)
                 onDisattivato()
               } catch (err) {

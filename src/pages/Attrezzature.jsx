@@ -652,13 +652,25 @@ function NumeriView() {
     .sort((a, b) => `${a.Cognome} ${a.Nome}`.localeCompare(`${b.Cognome} ${b.Nome}`))
 
   const conNumero = atletiAttivi.filter(a => a.Numero_Gara?.trim())
-  const numeriUsati = conNumero.map(a => a.Numero_Gara.trim())
-  const duplicati = numeriUsati.filter((n, i) => numeriUsati.indexOf(n) !== i)
-  const numDuplicatiUnici = [...new Set(duplicati)].length
+
+  // Duplicato = stesso numero E stesso sesso (campo Sesso dall'atleta)
+  function isDuplicato(atleta, tutti) {
+    if (!atleta.Numero_Gara?.trim()) return false
+    return tutti.some(a =>
+      a.ID_Atleta !== atleta.ID_Atleta &&
+      a.Numero_Gara?.trim() === atleta.Numero_Gara.trim() &&
+      a.Sesso === atleta.Sesso
+    )
+  }
+
+  const numDuplicatiUnici = [...new Set(
+    conNumero.filter(a => isDuplicato(a, atletiAttivi)).map(a => `${a.Numero_Gara.trim()}_${a.Sesso}`)
+  )].length
 
   // Controllo duplicato per il valore in editing
-  const duplicatoDi = editing && valoreEdit.trim()
-    ? atletiAttivi.find(a => a.ID_Atleta !== editing && a.Numero_Gara?.trim() === valoreEdit.trim())
+  const editingAtleta = editing ? atletiAttivi.find(a => a.ID_Atleta === editing) : null
+  const duplicatoDi = editing && valoreEdit.trim() && editingAtleta
+    ? atletiAttivi.find(a => a.ID_Atleta !== editing && a.Numero_Gara?.trim() === valoreEdit.trim() && a.Sesso === editingAtleta.Sesso)
     : null
 
   async function handleSalva(idAtleta) {
@@ -720,7 +732,7 @@ function NumeriView() {
         ) : (
           atletiFiltrati.map(a => {
             const isEditing = editing === a.ID_Atleta
-            const isDuplicato = !isEditing && a.Numero_Gara?.trim() && duplicati.includes(a.Numero_Gara.trim())
+            const hasDuplicato = !isEditing && isDuplicato(a, atletiAttivi)
 
             return (
               <div key={a.ID_Atleta} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
@@ -761,7 +773,7 @@ function NumeriView() {
                     }}>
                       {a.Numero_Gara?.trim() ? `#${a.Numero_Gara}` : '—'}
                     </span>
-                    {isDuplicato && <span style={{ color: 'var(--accent-warn)', fontSize: '12px' }}>⚠️</span>}
+                    {hasDuplicato && <span style={{ color: 'var(--accent-warn)', fontSize: '12px' }}>⚠️</span>}
                     <button className="btn btn-ghost" onClick={() => { setEditing(a.ID_Atleta); setValoreEdit(a.Numero_Gara || '') }} style={{ padding: '4px 6px', fontSize: '13px', lineHeight: 1 }}>✏️</button>
                   </div>
                 )}

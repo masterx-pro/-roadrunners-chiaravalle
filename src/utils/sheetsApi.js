@@ -82,11 +82,33 @@ export async function getAtleta(id) {
   return atleti.find(a => a.ID_Atleta === id)
 }
 
+// NOTA: l'ordine colonne del foglio Atleti è:
+// ID_Atleta, Nome, Cognome, Sesso, Luogo_Nascita, Data_Nascita, Codice_Fiscale,
+// ID_Categoria, Genitore_Nome, Nome_Categoria, Genitore_Telefono, Genitore_Email,
+// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione, Note, Numero_Gara
+// I dati esistenti (vecchi atleti) vanno aggiornati manualmente nel foglio per le colonne Sesso e Luogo_Nascita.
+
+export function buildAtletaRow(a, overrides = {}) {
+  return [
+    a.ID_Atleta, a.Nome, a.Cognome, a.Sesso || '', a.Luogo_Nascita || '',
+    a.Data_Nascita || '', a.Codice_Fiscale || '', a.ID_Categoria || '',
+    a.Genitore_Nome || '', a.Nome_Categoria || '',
+    a.Genitore_Telefono || '', a.Genitore_Email || '',
+    a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
+    a.Drive_Folder_ID || '', a.Attivo || 'TRUE', a.Data_Iscrizione || '',
+    a.Note || '', a.Numero_Gara || '',
+    ...Object.keys(overrides).length ? [] : [] // overrides applied below
+  ].map((v, i) => {
+    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara']
+    return overrides[keys[i]] !== undefined ? overrides[keys[i]] : v
+  })
+}
+
 export async function creaAtleta(atleta) {
   const id = `ATL-${String(Date.now()).slice(-6)}`
   const valori = [
-    id, atleta.nome, atleta.cognome, atleta.dataNascita,
-    atleta.codiceFiscale || '', atleta.idCategoria || '',
+    id, atleta.nome, atleta.cognome, atleta.sesso || '', atleta.luogoNascita || '',
+    atleta.dataNascita, atleta.codiceFiscale || '', atleta.idCategoria || '',
     atleta.genitoreNome || '', '', // Nome_Categoria — calcolato da formula CERCA.VERT
     atleta.genitoreTelefono || '', atleta.genitoreEmail || '',
     atleta.scadCertificato || '', atleta.scadFISR || '', atleta.numeroFISR || '',
@@ -103,13 +125,7 @@ export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
   const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
   if (idx === -1) throw new Error('Atleta non trovato')
   const a = atleti[idx]
-  return aggiornaRiga(SHEETS.ATLETI, idx, [
-    a.ID_Atleta, a.Nome, a.Cognome, a.Data_Nascita, a.Codice_Fiscale,
-    a.ID_Categoria, a.Genitore_Nome, a.Nome_Categoria || '',
-    a.Genitore_Telefono, a.Genitore_Email, a.Scad_Certificato,
-    a.Scad_FISR, a.Numero_FISR, a.Drive_Folder_ID, a.Attivo,
-    a.Data_Iscrizione, a.Note || '', nuovoNumero
-  ])
+  return aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(a, { Numero_Gara: nuovoNumero }))
 }
 
 // ============================================================
