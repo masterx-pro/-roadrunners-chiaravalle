@@ -25,6 +25,21 @@ export default function Calendario() {
   const [vista, setVista] = useState(null) // { tipo: 'presenze'|'gara', dati }
   const [tab, setTab] = useState('allenamenti')
 
+  function navigaVista(nuovaVista) {
+    if (nuovaVista) {
+      window.history.pushState({ vista: nuovaVista.tipo }, '', '')
+    }
+    setVista(nuovaVista)
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setVista(null)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   useEffect(() => {
     async function carica() {
       const [s, e, a] = await Promise.all([getSlotFissi(), getEventiSpeciali(), getAtleti()])
@@ -41,7 +56,7 @@ export default function Calendario() {
   if (vista?.tipo === 'modificaEvento') {
     return <ModificaEvento
       evento={vista.dati}
-      onBack={() => setVista(null)}
+      onBack={() => window.history.back()}
       onSaved={() => {
         setVista(null)
         setLoading(true)
@@ -53,7 +68,7 @@ export default function Calendario() {
   }
 
   if (vista?.tipo === 'nuovoEvento') {
-    return <NuovoEvento onBack={() => setVista(null)} onSaved={() => {
+    return <NuovoEvento onBack={() => window.history.back()} onSaved={() => {
       setVista(null)
       setLoading(true)
       Promise.all([getSlotFissi(), getEventiSpeciali(), getAtleti()]).then(([s, e, a]) => {
@@ -63,19 +78,19 @@ export default function Calendario() {
   }
 
   if (vista?.tipo === 'presenze') {
-    return <RegistroPresenze evento={vista.dati} atleti={atleti} onBack={() => setVista(null)} />
+    return <RegistroPresenze evento={vista.dati} atleti={atleti} onBack={() => window.history.back()} />
   }
 
   if (vista?.tipo === 'gara') {
     return <DettaglioGara
       gara={vista.dati}
       atleti={atleti}
-      onBack={() => setVista(null)}
+      onBack={() => window.history.back()}
       onUpdate={(garaAggiornata) => {
         setEventi(prev => prev.map(e => e.ID_Evento === garaAggiornata.ID_Evento ? garaAggiornata : e))
         setVista({ tipo: 'gara', dati: garaAggiornata })
       }}
-      onEdit={(gara) => setVista({ tipo: 'modificaEvento', dati: gara })}
+      onEdit={(gara) => navigaVista({ tipo: 'modificaEvento', dati: gara })}
     />
   }
 
@@ -132,7 +147,7 @@ export default function Calendario() {
                     <div
                       key={giorno}
                       style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                      onClick={() => setVista({ tipo: 'presenze', dati: { tipo: 'slot', Giorno_Settimana: giorno, Ora_Inizio: primo.Ora_Inizio, Ora_Fine: primo.Ora_Fine, Nome_Categoria: nomiCategorie, ID_Slot: idRif, Data: oggi } })}
+                      onClick={() => navigaVista({ tipo: 'presenze', dati: { tipo: 'slot', Giorno_Settimana: giorno, Ora_Inizio: primo.Ora_Inizio, Ora_Fine: primo.Ora_Fine, Nome_Categoria: nomiCategorie, ID_Slot: idRif, Data: oggi } })}
                     >
                       <div style={{ width: '48px', textAlign: 'center', fontFamily: 'var(--font-display)', fontSize: '12px', textTransform: 'uppercase', color: 'var(--accent)', flexShrink: 0 }}>
                         {giorno.slice(0, 3)}
@@ -157,7 +172,7 @@ export default function Calendario() {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="section-title" style={{ marginBottom: 0 }}>Prossimi eventi</div>
-            <button className="btn btn-primary" onClick={() => setVista({ tipo: 'nuovoEvento' })} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+            <button className="btn btn-primary" onClick={() => navigaVista({ tipo: 'nuovoEvento' })} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
           </div>
           <div className="card">
             {prossimiEventi.length === 0 ? (
@@ -175,7 +190,7 @@ export default function Calendario() {
                   <div
                     key={e.ID_Evento}
                     style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                    onClick={() => setVista({ tipo: isGara ? 'gara' : 'presenze', dati: e })}
+                    onClick={() => navigaVista({ tipo: isGara ? 'gara' : 'presenze', dati: e })}
                   >
                     <div style={{ width: '52px', textAlign: 'center', fontFamily: 'var(--font-display)', fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-secondary)', flexShrink: 0 }}>
                       {new Date(e.Data_Inizio).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })}

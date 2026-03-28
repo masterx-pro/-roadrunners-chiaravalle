@@ -16,6 +16,23 @@ export default function Atleti() {
   const [atletaSelezionato, setAtletaSelezionato] = useState(null)
   const [vista, setVista] = useState('lista') // 'lista' | 'nuovo' | 'categorie' | 'modifica'
 
+  function navigaVista(nuovaVista, atleta) {
+    if (nuovaVista !== 'lista') {
+      window.history.pushState({ vista: nuovaVista }, '', '')
+    }
+    if (atleta !== undefined) setAtletaSelezionato(atleta)
+    setVista(nuovaVista)
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setVista('lista')
+      setAtletaSelezionato(null)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   function ricarica() {
     setLoading(true)
     Promise.all([getAtleti(), getPattini(), getCategorie()]).then(([a, p, c]) => {
@@ -31,21 +48,21 @@ export default function Atleti() {
   if (loading) return <div className="loading-center">Caricamento atleti...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoAtleta onBack={() => setVista('lista')} onSaved={() => {
+    return <NuovoAtleta onBack={() => window.history.back()} onSaved={() => {
       setVista('lista')
       ricarica()
     }} />
   }
 
   if (vista === 'categorie') {
-    return <GestioneCategorie onBack={() => setVista('lista')} />
+    return <GestioneCategorie onBack={() => window.history.back()} />
   }
 
   if (vista === 'modifica' && atletaSelezionato) {
     return <ModificaAtleta
       atleta={atletaSelezionato}
       atleti={atleti}
-      onBack={() => setVista('scheda')}
+      onBack={() => window.history.back()}
       onSaved={() => {
         setVista('lista')
         setAtletaSelezionato(null)
@@ -60,8 +77,8 @@ export default function Atleti() {
         atleta={atletaSelezionato}
         atleti={atleti}
         pattini={pattini}
-        onBack={() => { setAtletaSelezionato(null); setVista('lista') }}
-        onModifica={() => setVista('modifica')}
+        onBack={() => window.history.back()}
+        onModifica={() => navigaVista('modifica')}
         onDisattivato={() => { setAtletaSelezionato(null); setVista('lista'); ricarica() }}
       />
     )
@@ -97,10 +114,10 @@ export default function Atleti() {
               </div>
             )}
           </div>
-          <button className="btn btn-ghost" onClick={() => setVista('categorie')} style={{ padding: '6px 12px', fontSize: '13px' }}>
+          <button className="btn btn-ghost" onClick={() => navigaVista('categorie')} style={{ padding: '6px 12px', fontSize: '13px' }}>
             Categorie
           </button>
-          <button className="btn btn-primary" onClick={() => setVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>
+          <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>
             +
           </button>
         </div>
@@ -154,7 +171,7 @@ export default function Atleti() {
           </div>
         ) : (
           atletiFiltrati.map(a => (
-            <AtletaRow key={a.ID_Atleta} atleta={a} onClick={() => { setAtletaSelezionato(a); setVista('scheda') }} />
+            <AtletaRow key={a.ID_Atleta} atleta={a} onClick={() => navigaVista('scheda', a)} />
           ))
         )}
       </div>
@@ -800,6 +817,23 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
   const [eliminando, setEliminando] = useState(null)
   const [sottoVista, setSottoVista] = useState(null) // 'scadenze' | 'noleggio' | 'pagamenti'
 
+  function navigaSottoVista(nuova) {
+    if (nuova) {
+      window.history.pushState({ sottoVista: nuova }, '', '')
+    }
+    setSottoVista(nuova)
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      if (sottoVista) {
+        setSottoVista(null)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [sottoVista])
+
   const CATEGORIE_DOC = [
     { key: 'certificato_medico', label: 'Certificato medico', icona: '🏥' },
     { key: 'tessera_fisr', label: 'Tessera FISR', icona: '🪪' },
@@ -908,7 +942,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     return <ModificaScadenze
       atleta={atleta}
       atleti={atleti}
-      onBack={() => setSottoVista(null)}
+      onBack={() => window.history.back()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }
@@ -918,7 +952,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       atleta={atleta}
       pattino={pattiniAtleta[0]}
       atleti={atleti}
-      onBack={() => setSottoVista(null)}
+      onBack={() => window.history.back()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }
@@ -927,7 +961,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
     return <GestionePagamenti
       atleta={atleta}
       atleti={atleti}
-      onBack={() => setSottoVista(null)}
+      onBack={() => window.history.back()}
       onSaved={() => { setSottoVista(null); onDisattivato() }}
     />
   }
@@ -978,7 +1012,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
         <span>Scadenze</span>
         <span style={{ fontSize: '14px' }}>✏️</span>
       </div>
-      <div className="card" onClick={() => setSottoVista('scadenze')} style={{ cursor: 'pointer' }}>
+      <div className="card" onClick={() => navigaSottoVista('scadenze')} style={{ cursor: 'pointer' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div style={{ fontWeight: '600', fontSize: '14px' }}>Certificato medico</div>
@@ -1004,7 +1038,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
             <span>Pattini in noleggio</span>
             <span style={{ fontSize: '14px' }}>✏️</span>
           </div>
-          <div className="card" onClick={() => setSottoVista('noleggio')} style={{ cursor: 'pointer' }}>
+          <div className="card" onClick={() => navigaSottoVista('noleggio')} style={{ cursor: 'pointer' }}>
             {pattiniAtleta.map(p => (
               <div key={p.ID_Pattino} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
                 <div>
@@ -1021,7 +1055,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
       )}
 
       {/* PAGAMENTI */}
-      <SezionePagamenti atleta={atleta} pattini={pattiniAtleta} onTap={() => setSottoVista('pagamenti')} />
+      <SezionePagamenti atleta={atleta} pattini={pattiniAtleta} onTap={() => navigaSottoVista('pagamenti')} />
 
       {/* DOCUMENTI */}
       <div className="section-title">Documenti</div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import Dashboard from './pages/Dashboard'
 import Atleti from './pages/Atleti'
@@ -21,6 +21,29 @@ export default function App() {
   const { isSignedIn, user, loading, errore, signIn } = useGoogleAuth()
   const [tab, setTab] = useState('home')
 
+  function navigaTab(nuovoTab) {
+    if (nuovoTab !== tab) {
+      window.history.pushState({ tab: nuovoTab }, '', '')
+      setTab(nuovoTab)
+    }
+  }
+
+  useEffect(() => {
+    window.history.replaceState({ tab: 'home' }, '', '')
+
+    function handlePopState(event) {
+      if (event.state?.tab) {
+        setTab(event.state.tab)
+      } else {
+        setTab('home')
+        window.history.pushState({ tab: 'home' }, '', '')
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   if (loading) return <div className="loading-center">Caricamento...</div>
   if (!isSignedIn) return <LoginPage onSignIn={signIn} errore={errore} />
 
@@ -41,7 +64,7 @@ export default function App() {
             <button
               key={t.id}
               className={`nav-item ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => navigaTab(t.id)}
             >
               <Icon />
               {t.label}

@@ -47,6 +47,22 @@ function PattiniView() {
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
 
+  function navigaVista(nuovaVista) {
+    if (nuovaVista !== 'lista') {
+      window.history.pushState({ vista: nuovaVista }, '', '')
+    }
+    setVista(nuovaVista)
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setVista('lista')
+      setSelezionato(null)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   function ricarica() {
     setLoading(true)
     Promise.all([getPattini(), getAtleti()]).then(([p, a]) => {
@@ -59,7 +75,7 @@ function PattiniView() {
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoPattino onBack={() => setVista('lista')} onSaved={() => { setVista('lista'); ricarica() }} />
+    return <NuovoPattino onBack={() => window.history.back()} onSaved={() => { setVista('lista'); ricarica() }} />
   }
 
   if (vista === 'dettaglio' && selezionato) {
@@ -67,7 +83,7 @@ function PattiniView() {
       pattino={selezionato}
       idx={selIdx}
       atleti={atleti}
-      onBack={() => { setVista('lista'); setSelezionato(null) }}
+      onBack={() => window.history.back()}
       onSaved={() => { setVista('lista'); setSelezionato(null); ricarica() }}
     />
   }
@@ -88,7 +104,7 @@ function PattiniView() {
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
         <button className="btn btn-ghost" onClick={() => esportaPattiniExcel(pattini, atleti)} style={{ padding: '6px 12px', fontSize: '13px' }}>📥 Excel</button>
-        <button className="btn btn-primary" onClick={() => setVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+        <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -116,7 +132,7 @@ function PattiniView() {
             const realIdx = pattini.findIndex(pp => pp.ID_Pattino === p.ID_Pattino)
             return (
               <div key={p.ID_Pattino} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                onClick={() => { setSelezionato(p); setSelIdx(realIdx); setVista('dettaglio') }}
+                onClick={() => { setSelezionato(p); setSelIdx(realIdx); navigaVista('dettaglio') }}
               >
                 <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-display)', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
                   {p.Taglia}
@@ -420,6 +436,22 @@ function RuoteView() {
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
 
+  function navigaVista(nuovaVista) {
+    if (nuovaVista !== 'lista') {
+      window.history.pushState({ vista: nuovaVista }, '', '')
+    }
+    setVista(nuovaVista)
+  }
+
+  useEffect(() => {
+    function handlePopState() {
+      setVista('lista')
+      setSelezionato(null)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   function ricarica() {
     setLoading(true)
     getRuote().then(r => { setRuote(r.filter(r => r.Stato !== 'Eliminato')); setLoading(false) })
@@ -430,14 +462,14 @@ function RuoteView() {
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   if (vista === 'nuovo') {
-    return <NuovoSetRuote onBack={() => setVista('lista')} onSaved={() => { setVista('lista'); ricarica() }} />
+    return <NuovoSetRuote onBack={() => window.history.back()} onSaved={() => { setVista('lista'); ricarica() }} />
   }
 
   if (vista === 'dettaglio' && selezionato) {
     return <DettaglioRuote
       ruote={selezionato}
       idx={selIdx}
-      onBack={() => { setVista('lista'); setSelezionato(null) }}
+      onBack={() => window.history.back()}
       onSaved={() => { setVista('lista'); setSelezionato(null); ricarica() }}
     />
   }
@@ -446,7 +478,7 @@ function RuoteView() {
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
         <button className="btn btn-ghost" onClick={() => esportaRuoteExcel(ruote)} style={{ padding: '6px 12px', fontSize: '13px' }}>📥 Excel</button>
-        <button className="btn btn-primary" onClick={() => setVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+        <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
       </div>
 
       <div className="card">
@@ -460,7 +492,7 @@ function RuoteView() {
             const realIdx = i // since we filtered out Eliminato
             return (
               <div key={r.ID_Set} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                onClick={() => { setSelezionato(r); setSelIdx(realIdx); setVista('dettaglio') }}
+                onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}
               >
                 <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>⚙️</div>
                 <div style={{ flex: 1 }}>
