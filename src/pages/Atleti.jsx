@@ -464,6 +464,7 @@ function NuovoAtleta({ onBack, onSaved }) {
         if (form.tipoRate === '1') {
           await creaPagamento({
             idAtleta,
+            nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota associativa ${stagione}`,
             importo: importoQuota,
@@ -474,6 +475,7 @@ function NuovoAtleta({ onBack, onSaved }) {
           const metaImporto = Math.ceil(importoQuota / 2)
           await creaPagamento({
             idAtleta,
+            nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota ${stagione} — Rata 1/2`,
             importo: metaImporto,
@@ -482,6 +484,7 @@ function NuovoAtleta({ onBack, onSaved }) {
           })
           await creaPagamento({
             idAtleta,
+            nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota ${stagione} — Rata 2/2`,
             importo: importoQuota - metaImporto,
@@ -804,7 +807,7 @@ function AtletaRow({ atleta, onClick }) {
       <div className="atleta-avatar" style={{ alignSelf: 'flex-start', marginTop: '4px' }}>{iniziali}</div>
       <div className="atleta-info" style={{ flex: 1 }}>
         <div className="atleta-nome">{atleta.Nome} {atleta.Cognome}</div>
-        <div className="atleta-sub">{atleta.Nome_Categoria || '—'}</div>
+        {atleta.Nome_Categoria && <div className="atleta-sub">{atleta.Nome_Categoria}</div>}
         {(() => {
           const badges = []
           const statoCert = statoScadenza(atleta.Scad_Certificato)
@@ -1060,7 +1063,7 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
         <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700' }}>
           {atleta.Nome} {atleta.Cognome}
         </h2>
-        <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{atleta.Nome_Categoria || '—'}</p>
+        {atleta.Nome_Categoria && <p style={{ color: 'var(--text-secondary)', marginTop: '4px' }}>{atleta.Nome_Categoria}</p>}
       </div>
 
       {/* DATI PERSONALI */}
