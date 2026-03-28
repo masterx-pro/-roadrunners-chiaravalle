@@ -257,6 +257,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   )
   const [saving, setSaving] = useState(false)
   const [statoPag, setStatoPag] = useState(gara.Stato_Pagamento_Gara || 'Da pagare')
+  const [refreshDocs, setRefreshDocs] = useState(0)
 
   const scadenze = [
     { label: 'Iscrizione atleti', data: gara.Scad_Iscrizione, icona: '📋' },
@@ -376,6 +377,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
                   onUpdate({ ...gara, Drive_Folder_Gara: folderId })
                 }
                 await caricaDocumentoGara(folderId, file, `ricevuta_pagamento_${file.name}`)
+                setRefreshDocs(prev => prev + 1)
                 alert('Ricevuta archiviata ✓')
               }}
               style={{ display: 'none' }}
@@ -419,6 +421,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
                 onUpdate({ ...gara, Drive_Folder_Gara: folderId })
               }
               await caricaDocumentoGara(folderId, file, `iscrizione_${file.name}`)
+              setRefreshDocs(prev => prev + 1)
               alert('Documento iscrizione archiviato ✓')
             }}
             style={{ display: 'none' }}
@@ -428,6 +431,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
             📎 Archivia documento iscrizione
           </label>
         </div>
+        <ListaDocumentiGara driveFolderId={gara.Drive_Folder_Gara} key={refreshDocs} />
       </div>
 
       {/* DOCUMENTI RICHIESTI */}
@@ -1014,6 +1018,55 @@ function ModificaEvento({ evento, onBack, onSaved }) {
       <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginTop: '12px', marginBottom: '24px' }}>
         {saving ? 'Salvataggio...' : 'Salva modifiche'}
       </button>
+    </div>
+  )
+}
+
+// ============================================================
+// LISTA DOCUMENTI GARA (Drive)
+// ============================================================
+
+function ListaDocumentiGara({ driveFolderId }) {
+  const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!driveFolderId) return
+    setLoading(true)
+    const token = localStorage.getItem('gapi_token')
+    fetch(`https://www.googleapis.com/drive/v3/files?q='${driveFolderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,webViewLink)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => { setDocs(data.files || []); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [driveFolderId])
+
+  if (!driveFolderId || loading) return null
+  if (docs.length === 0) return null
+
+  return (
+    <div style={{ marginTop: '10px' }}>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+        Documenti caricati
+      </div>
+      {docs.map(d => (
+        <a
+          key={d.id}
+          href={d.webViewLink}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '6px 0', textDecoration: 'none',
+            borderBottom: '1px solid var(--border)', fontSize: '13px'
+          }}
+        >
+          <span>📄</span>
+          <span style={{ flex: 1, color: 'var(--text-primary)' }}>{d.name}</span>
+          <span style={{ color: 'var(--accent)', fontSize: '12px', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Apri →</span>
+        </a>
+      ))}
     </div>
   )
 }

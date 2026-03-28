@@ -731,32 +731,37 @@ function AtletaRow({ atleta, onClick }) {
 
   return (
     <div className="atleta-row" onClick={onClick}>
-      <div className="atleta-avatar">{iniziali}</div>
-      <div className="atleta-info">
+      <div className="atleta-avatar" style={{ alignSelf: 'flex-start', marginTop: '4px' }}>{iniziali}</div>
+      <div className="atleta-info" style={{ flex: 1 }}>
         <div className="atleta-nome">{atleta.Nome} {atleta.Cognome}</div>
         <div className="atleta-sub">{atleta.Nome_Categoria || '—'}</div>
+        {(() => {
+          const badges = []
+          const statoCert = statoScadenza(atleta.Scad_Certificato)
+          const statoFisr = statoScadenza(atleta.Scad_FISR)
+          const giorniCert = giorniAllaScadenza(atleta.Scad_Certificato)
+          const giorniFisr = giorniAllaScadenza(atleta.Scad_FISR)
+
+          if (statoCert === 'scaduto') badges.push({ label: 'Scaduto Cert. medico', classe: 'badge-danger' })
+          else if (statoCert === 'urgente') badges.push({ label: `${giorniCert}gg Cert. medico`, classe: 'badge-urgente' })
+          else if (statoCert === 'in_scadenza') badges.push({ label: `${giorniCert}gg Cert. medico`, classe: 'badge-warn' })
+          else if (statoCert === 'mancante') badges.push({ label: 'Cert. medico mancante', classe: 'badge-danger' })
+
+          if (statoFisr === 'scaduto') badges.push({ label: 'Scaduto FISR', classe: 'badge-danger' })
+          else if (statoFisr === 'urgente') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-urgente' })
+          else if (statoFisr === 'in_scadenza') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-warn' })
+
+          if (badges.length === 0) return null
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+              {badges.map((b, i) => (
+                <span key={i} className={`badge ${b.classe}`} style={{ fontSize: '11px', alignSelf: 'flex-start' }}>{b.label}</span>
+              ))}
+            </div>
+          )
+        })()}
       </div>
-      {(() => {
-        const badges = []
-        const statoCert = statoScadenza(atleta.Scad_Certificato)
-        const statoFisr = statoScadenza(atleta.Scad_FISR)
-        const giorniCert = giorniAllaScadenza(atleta.Scad_Certificato)
-        const giorniFisr = giorniAllaScadenza(atleta.Scad_FISR)
-
-        if (statoCert === 'scaduto') badges.push({ label: 'Scaduto Cert.', classe: 'badge-danger' })
-        else if (statoCert === 'urgente') badges.push({ label: `${giorniCert}gg Cert.`, classe: 'badge-urgente' })
-        else if (statoCert === 'in_scadenza') badges.push({ label: `${giorniCert}gg Cert.`, classe: 'badge-warn' })
-        else if (statoCert === 'mancante') badges.push({ label: 'No Cert.', classe: 'badge-danger' })
-
-        if (statoFisr === 'scaduto') badges.push({ label: 'Scaduto FISR', classe: 'badge-danger' })
-        else if (statoFisr === 'urgente') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-urgente' })
-        else if (statoFisr === 'in_scadenza') badges.push({ label: `${giorniFisr}gg FISR`, classe: 'badge-warn' })
-
-        return badges.map((b, i) => (
-          <span key={i} className={`badge ${b.classe}`} style={{ fontSize: '11px', marginLeft: '4px' }}>{b.label}</span>
-        ))
-      })()}
-      <ChevronIcon />
+      <span style={{ color: 'var(--text-secondary)', fontSize: '18px', alignSelf: 'flex-start', marginTop: '8px' }}>›</span>
     </div>
   )
 }
@@ -1208,6 +1213,7 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
   const [numeroFISR, setNumeroFISR] = useState(atleta.Numero_FISR || '')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(null)
+  const [refreshDocs, setRefreshDocs] = useState(0)
 
   async function handleSalva() {
     setSaving(true)
@@ -1245,6 +1251,7 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
         ? `certificato_medico.${ext}`
         : `tessera_fisr.${ext}`
       await caricaDocumento(fileFinale, nomeFile, folderId)
+      setRefreshDocs(prev => prev + 1)
       alert(`${tipo === 'certificato' ? 'Certificato medico' : 'Tessera FISR'} caricato ✓`)
     } catch (err) {
       console.error(err)
@@ -1308,6 +1315,10 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           {uploading === 'fisr' ? 'Caricamento...' : '📎 Carica tessera FISR (foto o file)'}
         </label>
       </div>
+
+      {atleta.Drive_Folder_ID && (
+        <ListaDocumentiAtleta folderId={atleta.Drive_Folder_ID} key={refreshDocs} filterPrefix={['certificato_medico', 'tessera_fisr']} />
+      )}
 
       <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginBottom: '24px' }}>
         {saving ? 'Salvataggio...' : 'Salva scadenze'}
@@ -1420,6 +1431,7 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
 function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
   const [pagamenti, setPagamenti] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshDocs, setRefreshDocs] = useState(0)
 
   useEffect(() => {
     getPagamentiAtleta(atleta.ID_Atleta).then(p => { setPagamenti(p); setLoading(false) })
@@ -1448,6 +1460,7 @@ function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
     const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
     const nomeFile = `ricevuta_${pag.Tipo}_${pag.ID_Pagamento}.${ext}`
     await caricaDocumento(fileFinale, nomeFile, folderId)
+    setRefreshDocs(prev => prev + 1)
     alert('Ricevuta caricata ✓')
   }
 
@@ -1526,6 +1539,10 @@ function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
           ))
         )}
       </div>
+
+      {atleta.Drive_Folder_ID && (
+        <ListaDocumentiAtleta folderId={atleta.Drive_Folder_ID} key={refreshDocs} filterPrefix={['ricevuta']} />
+      )}
     </div>
   )
 }
@@ -1622,6 +1639,56 @@ function SezionePagamenti({ atleta, pattini, onTap }) {
         )}
       </div>
     </>
+  )
+}
+
+// ============================================================
+// LISTA DOCUMENTI ATLETA (filtrata)
+// ============================================================
+
+function ListaDocumentiAtleta({ folderId, filterPrefix }) {
+  const [docs, setDocs] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!folderId) return
+    setLoading(true)
+    listaDocumentiAtleta(folderId)
+      .then(files => {
+        const filtered = filterPrefix
+          ? files.filter(d => filterPrefix.some(p => d.name?.toLowerCase().startsWith(p)))
+          : files
+        setDocs(filtered)
+      })
+      .finally(() => setLoading(false))
+  }, [folderId])
+
+  if (!folderId || loading) return null
+  if (docs.length === 0) return null
+
+  return (
+    <div className="card" style={{ marginTop: '8px', marginBottom: '16px' }}>
+      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+        Documenti caricati
+      </div>
+      {docs.map(d => (
+        <a
+          key={d.id}
+          href={d.webViewLink}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            padding: '6px 0', textDecoration: 'none',
+            borderBottom: '1px solid var(--border)', fontSize: '13px'
+          }}
+        >
+          <span>📄</span>
+          <span style={{ flex: 1, color: 'var(--text-primary)' }}>{d.name}</span>
+          <span style={{ color: 'var(--accent)', fontSize: '12px', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Apri →</span>
+        </a>
+      ))}
+    </div>
   )
 }
 
