@@ -24,8 +24,10 @@ export async function leggiSheet(nomeSheet) {
   const res = await fetch(url, { headers: authHeaders() })
   const data = await res.json()
   const [intestazioni, ...righe] = data.values || []
+  // Pulisci nomi colonne da BOM e spazi invisibili
+  const headers = intestazioni.map(h => h.replace(/^\uFEFF/, '').trim())
   return righe.map(riga =>
-    Object.fromEntries(intestazioni.map((col, i) => [col, (riga[i] ?? '').toString().trim()]))
+    Object.fromEntries(headers.map((col, i) => [col, (riga[i] ?? '').toString().trim()]))
   )
 }
 
@@ -93,8 +95,7 @@ export async function getAtleta(id) {
 // NOTA: l'ordine colonne del foglio Atleti è:
 // ID_Atleta, Nome, Cognome, Sesso, Luogo_Nascita, Data_Nascita, Codice_Fiscale,
 // ID_Categoria, Genitore_Nome, Nome_Categoria, Genitore_Telefono, Genitore_Email,
-// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione, Note, Numero_Gara
-// I dati esistenti (vecchi atleti) vanno aggiornati manualmente nel foglio per le colonne Sesso e Luogo_Nascita.
+// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione, Note, Numero_Gara, Quota_Personalizzata
 
 export function buildAtletaRow(a, overrides = {}) {
   return [
@@ -104,10 +105,9 @@ export function buildAtletaRow(a, overrides = {}) {
     a.Genitore_Telefono || '', a.Genitore_Email || '',
     a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
     a.Drive_Folder_ID || '', a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-    a.Note || '', a.Numero_Gara || '',
-    ...Object.keys(overrides).length ? [] : [] // overrides applied below
+    a.Note || '', a.Numero_Gara || '', a.Quota_Personalizzata || ''
   ].map((v, i) => {
-    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara']
+    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata']
     return overrides[keys[i]] !== undefined ? overrides[keys[i]] : v
   })
 }
@@ -122,7 +122,8 @@ export async function creaAtleta(atleta) {
     atleta.scadCertificato || '', atleta.scadFISR || '', atleta.numeroFISR || '',
     '', // Drive_Folder_ID
     'TRUE', atleta.dataIscrizione || new Date().toISOString().split('T')[0],
-    atleta.note || '', atleta.numeroGara || ''
+    atleta.note || '', atleta.numeroGara || '',
+    atleta.quotaPersonalizzata || ''
   ]
   await aggiungiRiga(SHEETS.ATLETI, valori)
   await scriviLog('Nuovo', 'Atleta', `${atleta.nome} ${atleta.cognome}`)
@@ -403,7 +404,9 @@ export async function aggiornaIscrittGara(idEvento, idAtleta, iscritto) {
     ev.ID_Evento, ev.Titolo, ev.Data_Inizio, ev.Ora_Inizio, ev.Data_Fine, ev.Ora_Fine,
     ev.Tipo, ev.Luogo, ev.ID_Categoria, ev.Scad_Iscrizione, ev.Scad_Pagamento,
     ev.Data_Convocati, ev.Documenti_Richiesti,
-    iscritti.join(','), ev.Stato_Pagamento_Gara, ev.Note
+    iscritti.join(','), ev.Stato_Pagamento_Gara, ev.Note,
+    ev.Partecipazione || 'FALSE', ev.Iscrizione_Comunicata || 'FALSE',
+    ev.Drive_Folder_Gara || ''
   ])
   await scriviLog('Iscrizione gara', 'Gara', `atleta ${idAtleta} evento ${idEvento}`)
 }
@@ -415,7 +418,8 @@ export async function creaEvento(evento) {
     evento.dataFine, evento.oraFine, evento.tipo, evento.luogo,
     evento.idCategoria || '', evento.scadIscrizione || '',
     evento.scadPagamento || '', evento.dataConvocati || '',
-    evento.documentiRichiesti || '', '', 'Da pagare', evento.note || ''
+    evento.documentiRichiesti || '', '', 'Da pagare', evento.note || '',
+    'FALSE', 'FALSE', ''
   ])
   await scriviLog('Nuovo', 'Evento', `${evento.titolo} — ${evento.dataInizio}`)
   return id
@@ -431,7 +435,9 @@ export async function aggiornaEvento(evento) {
     evento.ID_Categoria || '', evento.Scad_Iscrizione || '',
     evento.Scad_Pagamento || '', evento.Data_Convocati || '',
     evento.Documenti_Richiesti || '', evento.Iscritti || '',
-    evento.Stato_Pagamento_Gara || 'Da pagare', evento.Note || ''
+    evento.Stato_Pagamento_Gara || 'Da pagare', evento.Note || '',
+    evento.Partecipazione || 'FALSE', evento.Iscrizione_Comunicata || 'FALSE',
+    evento.Drive_Folder_Gara || ''
   ])
   await scriviLog('Modifica', 'Evento', `${evento.Titolo} — ${evento.ID_Evento}`)
 }
@@ -445,6 +451,173 @@ export async function aggiornaStatoPagamentoGara(idEvento, stato) {
     ev.ID_Evento, ev.Titolo, ev.Data_Inizio, ev.Ora_Inizio, ev.Data_Fine, ev.Ora_Fine,
     ev.Tipo, ev.Luogo, ev.ID_Categoria, ev.Scad_Iscrizione, ev.Scad_Pagamento,
     ev.Data_Convocati, ev.Documenti_Richiesti,
-    ev.Iscritti, stato, ev.Note
+    ev.Iscritti, stato, ev.Note,
+    ev.Partecipazione || 'FALSE', ev.Iscrizione_Comunicata || 'FALSE',
+    ev.Drive_Folder_Gara || ''
   ])
+}
+
+// ============================================================
+// TOGGLE PARTECIPAZIONE / ISCRIZIONE COMUNICATA
+// ============================================================
+
+export async function togglePartecipazione(idEvento) {
+  const eventi = await leggiSheet(SHEETS.EVENTI_SPECIALI)
+  const idx = eventi.findIndex(e => e.ID_Evento === idEvento)
+  if (idx === -1) throw new Error('Evento non trovato')
+  const ev = eventi[idx]
+  const nuovoStato = ev.Partecipazione === 'TRUE' ? 'FALSE' : 'TRUE'
+  ev.Partecipazione = nuovoStato
+  await aggiornaRiga(SHEETS.EVENTI_SPECIALI, idx, [
+    ev.ID_Evento, ev.Titolo, ev.Data_Inizio, ev.Ora_Inizio, ev.Data_Fine, ev.Ora_Fine,
+    ev.Tipo, ev.Luogo, ev.ID_Categoria, ev.Scad_Iscrizione, ev.Scad_Pagamento,
+    ev.Data_Convocati, ev.Documenti_Richiesti,
+    ev.Iscritti, ev.Stato_Pagamento_Gara || 'Da pagare', ev.Note,
+    nuovoStato, ev.Iscrizione_Comunicata || 'FALSE',
+    ev.Drive_Folder_Gara || ''
+  ])
+  await scriviLog(nuovoStato === 'TRUE' ? 'Partecipazione' : 'Ritiro', 'Evento', ev.Titolo)
+  return nuovoStato
+}
+
+export async function toggleIscrizioneComunicata(idEvento) {
+  const eventi = await leggiSheet(SHEETS.EVENTI_SPECIALI)
+  const idx = eventi.findIndex(e => e.ID_Evento === idEvento)
+  if (idx === -1) throw new Error('Evento non trovato')
+  const ev = eventi[idx]
+  const nuovoStato = ev.Iscrizione_Comunicata === 'TRUE' ? 'FALSE' : 'TRUE'
+  ev.Iscrizione_Comunicata = nuovoStato
+  await aggiornaRiga(SHEETS.EVENTI_SPECIALI, idx, [
+    ev.ID_Evento, ev.Titolo, ev.Data_Inizio, ev.Ora_Inizio, ev.Data_Fine, ev.Ora_Fine,
+    ev.Tipo, ev.Luogo, ev.ID_Categoria, ev.Scad_Iscrizione, ev.Scad_Pagamento,
+    ev.Data_Convocati, ev.Documenti_Richiesti,
+    ev.Iscritti, ev.Stato_Pagamento_Gara || 'Da pagare', ev.Note,
+    ev.Partecipazione || 'FALSE', nuovoStato,
+    ev.Drive_Folder_Gara || ''
+  ])
+  await scriviLog(nuovoStato === 'TRUE' ? 'Iscrizione comunicata' : 'Iscrizione annullata', 'Evento', ev.Titolo)
+  return nuovoStato
+}
+
+// ============================================================
+// DRIVE — cartelle e documenti gara
+// ============================================================
+
+export async function creaCartellaGara(evento) {
+  const token = getToken()
+
+  // Cerca o crea cartella "Gare" nella root
+  let gareFolderId
+  const searchRes = await fetch(
+    `${DRIVE_URL}/files?q=name='Gare' and '${GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  )
+  const searchData = await searchRes.json()
+  if (searchData.files && searchData.files.length > 0) {
+    gareFolderId = searchData.files[0].id
+  } else {
+    const createRes = await fetch(`${DRIVE_URL}/files`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Gare', mimeType: 'application/vnd.google-apps.folder', parents: [GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID] })
+    })
+    const createData = await createRes.json()
+    gareFolderId = createData.id
+  }
+
+  // Crea sottocartella per questa gara
+  const nomeCartella = `${evento.Titolo}_${evento.Data_Inizio || ''}`.replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ _-]/g, '_')
+  const garaRes = await fetch(`${DRIVE_URL}/files`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nomeCartella, mimeType: 'application/vnd.google-apps.folder', parents: [gareFolderId] })
+  })
+  const garaData = await garaRes.json()
+  return garaData.id
+}
+
+export async function caricaDocumentoGara(driveFolderId, file, nomeFile) {
+  const token = getToken()
+  const metadata = { name: nomeFile || file.name, parents: [driveFolderId] }
+  const form = new FormData()
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+  form.append('file', file)
+  const res = await fetch(`${DRIVE_UPLOAD_URL}/files?uploadType=multipart`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form
+  })
+  return res.json()
+}
+
+// ============================================================
+// PAGAMENTI
+// ============================================================
+
+export async function getPagamentiAtleta(idAtleta) {
+  const pagamenti = await leggiSheet(SHEETS.PAGAMENTI)
+  return pagamenti.filter(p => p.ID_Atleta === idAtleta)
+}
+
+export async function creaPagamento(pagamento) {
+  const id = `PAG-${String(Date.now()).slice(-6)}`
+  await aggiungiRiga(SHEETS.PAGAMENTI, [
+    id, pagamento.idAtleta, pagamento.tipo, pagamento.descrizione,
+    pagamento.importo, pagamento.stato || 'Da pagare',
+    pagamento.dataScadenza || '', pagamento.dataPagamento || '',
+    pagamento.note || ''
+  ])
+  await scriviLog('Nuovo', 'Pagamento', `${pagamento.tipo} — ${pagamento.descrizione}`)
+  return id
+}
+
+export async function aggiornaPagamento(idPagamento, updates) {
+  const pagamenti = await leggiSheet(SHEETS.PAGAMENTI)
+  const idx = pagamenti.findIndex(p => p.ID_Pagamento === idPagamento)
+  if (idx === -1) throw new Error('Pagamento non trovato')
+  const p = pagamenti[idx]
+  await aggiornaRiga(SHEETS.PAGAMENTI, idx, [
+    p.ID_Pagamento, p.ID_Atleta,
+    updates.Tipo || p.Tipo, updates.Descrizione || p.Descrizione,
+    updates.Importo || p.Importo, updates.Stato || p.Stato,
+    updates.Data_Scadenza || p.Data_Scadenza, updates.Data_Pagamento || p.Data_Pagamento,
+    updates.Note || p.Note
+  ])
+  await scriviLog('Modifica', 'Pagamento', `${p.ID_Pagamento} — ${updates.Stato || p.Stato}`)
+}
+
+export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate) {
+  const { PAGAMENTI_CONFIG } = await import('../config/google.js')
+  const anno = new Date().getFullYear()
+  const stagione = `${anno}/${anno + 1}`
+
+  if (tipoRate === '1') {
+    await creaPagamento({
+      idAtleta,
+      tipo: 'Quota',
+      descrizione: `Quota associativa ${stagione}`,
+      importo: importo,
+      stato: 'Da pagare',
+      dataScadenza: `${anno}-${PAGAMENTI_CONFIG.SCADENZA_RATA_1}-15`,
+    })
+  } else {
+    const metaImporto = Math.ceil(importo / 2)
+    await creaPagamento({
+      idAtleta,
+      tipo: 'Quota',
+      descrizione: `Quota ${stagione} — Rata 1/2`,
+      importo: metaImporto,
+      stato: 'Da pagare',
+      dataScadenza: `${anno}-${PAGAMENTI_CONFIG.SCADENZA_RATA_1}-15`,
+    })
+    await creaPagamento({
+      idAtleta,
+      tipo: 'Quota',
+      descrizione: `Quota ${stagione} — Rata 2/2`,
+      importo: importo - metaImporto,
+      stato: 'Da pagare',
+      dataScadenza: `${anno + 1}-${PAGAMENTI_CONFIG.SCADENZA_RATA_2}-15`,
+    })
+  }
+  await scriviLog('Quote generate', 'Atleta', nomeAtleta)
 }

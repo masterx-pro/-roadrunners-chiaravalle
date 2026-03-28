@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -191,8 +191,36 @@ export default function Calendario() {
                           ⚠️ Iscrizioni {alertIscrizione === 'scaduto' ? 'chiuse' : `scadono tra ${giorniAllaScadenza(e.Scad_Iscrizione)}gg`}
                         </div>
                       )}
+                      {e.Partecipazione === 'TRUE' && (() => {
+                        const alertEvento = []
+                        if (!e.Scad_Iscrizione) alertEvento.push('Scadenza iscrizione')
+                        if (!e.Scad_Pagamento) alertEvento.push('Scadenza pagamento')
+                        if (!e.Iscritti || e.Iscritti.split(',').filter(Boolean).length === 0) alertEvento.push('Atleti da selezionare')
+                        if (e.Iscrizione_Comunicata !== 'TRUE') alertEvento.push('Iscrizione da comunicare')
+                        if (e.Stato_Pagamento_Gara !== 'Pagato') alertEvento.push('Pagamento da effettuare')
+                        if (alertEvento.length === 0) return null
+                        return (
+                          <div style={{ color: '#FCD34D', fontSize: '12px', marginTop: '2px' }}>
+                            ⚠️ {alertEvento.join(' · ')}
+                          </div>
+                        )
+                      })()}
                     </div>
-                    <span className={`badge ${e.Tipo === 'Gara' ? 'badge-danger' : e.Tipo === 'Trasferta' ? 'badge-warn' : 'badge-muted'}`}>{e.Tipo}</span>
+                    {isGara ? (
+                      <button
+                        className={`badge ${e.Partecipazione === 'TRUE' ? 'badge-ok' : 'badge-muted'}`}
+                        style={{ cursor: 'pointer', border: 'none', padding: '6px 10px' }}
+                        onClick={async (ev) => {
+                          ev.stopPropagation()
+                          const nuovoStato = await togglePartecipazione(e.ID_Evento)
+                          setEventi(prev => prev.map(evt => evt.ID_Evento === e.ID_Evento ? { ...evt, Partecipazione: nuovoStato } : evt))
+                        }}
+                      >
+                        {e.Partecipazione === 'TRUE' ? '✓ Partecipiamo' : '○ Partecipa?'}
+                      </button>
+                    ) : (
+                      <span className={`badge ${e.Tipo === 'Trasferta' ? 'badge-warn' : 'badge-muted'}`}>{e.Tipo}</span>
+                    )}
                   </div>
                 )
               })
@@ -316,6 +344,74 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
           >
             {statoPag} (tocca per cambiare)
           </button>
+        </div>
+        {statoPag === 'Pagato' && (
+          <div style={{ marginTop: '12px' }}>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              onChange={async (e) => {
+                const file = e.target.files[0]
+                if (!file) return
+                let folderId = gara.Drive_Folder_Gara
+                if (!folderId) {
+                  folderId = await creaCartellaGara(gara)
+                  await aggiornaEvento({ ...gara, Drive_Folder_Gara: folderId })
+                  onUpdate({ ...gara, Drive_Folder_Gara: folderId })
+                }
+                await caricaDocumentoGara(folderId, file, `ricevuta_pagamento_${file.name}`)
+                alert('Ricevuta archiviata ✓')
+              }}
+              style={{ display: 'none' }}
+              id="upload-ricevuta"
+            />
+            <label htmlFor="upload-ricevuta" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer' }}>
+              📎 Archivia ricevuta pagamento
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* ISCRIZIONE COMUNICATA */}
+      <div className="section-title">Iscrizione federazione</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontWeight: '600' }}>Iscrizione comunicata</div>
+          <button
+            className={`badge ${gara.Iscrizione_Comunicata === 'TRUE' ? 'badge-ok' : 'badge-warn'}`}
+            style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: '13px' }}
+            onClick={async () => {
+              const nuovoStato = await toggleIscrizioneComunicata(gara.ID_Evento)
+              onUpdate({ ...gara, Iscrizione_Comunicata: nuovoStato })
+            }}
+          >
+            {gara.Iscrizione_Comunicata === 'TRUE' ? 'Comunicata ✓' : 'Da comunicare (tocca)'}
+          </button>
+        </div>
+        <div style={{ marginTop: '12px' }}>
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            onChange={async (e) => {
+              const file = e.target.files[0]
+              if (!file) return
+              let folderId = gara.Drive_Folder_Gara
+              if (!folderId) {
+                folderId = await creaCartellaGara(gara)
+                await aggiornaEvento({ ...gara, Drive_Folder_Gara: folderId })
+                onUpdate({ ...gara, Drive_Folder_Gara: folderId })
+              }
+              await caricaDocumentoGara(folderId, file, `iscrizione_${file.name}`)
+              alert('Documento iscrizione archiviato ✓')
+            }}
+            style={{ display: 'none' }}
+            id="upload-iscrizione"
+          />
+          <label htmlFor="upload-iscrizione" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer' }}>
+            📎 Archivia documento iscrizione
+          </label>
         </div>
       </div>
 
@@ -751,7 +847,10 @@ function ModificaEvento({ evento, onBack, onSaved }) {
         Documenti_Richiesti: form.documentiRichiesti,
         Iscritti: evento.Iscritti || '',
         Stato_Pagamento_Gara: evento.Stato_Pagamento_Gara || 'Da pagare',
-        Note: form.note
+        Note: form.note,
+        Partecipazione: evento.Partecipazione || 'FALSE',
+        Iscrizione_Comunicata: evento.Iscrizione_Comunicata || 'FALSE',
+        Drive_Folder_Gara: evento.Drive_Folder_Gara || ''
       })
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)

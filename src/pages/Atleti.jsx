@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog } from '../utils/sheetsApi'
-import { SHEETS } from '../config/google'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, buildAtletaRow, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta } from '../utils/sheetsApi'
+import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
 
@@ -246,6 +246,19 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
           <label className="form-label">Numero di gara</label>
           <input className="form-input" value={form.numeroGara} onChange={e => update('numeroGara', e.target.value)} placeholder="es. 42" />
         </div>
+        <div className="form-group">
+          <label className="form-label">Quota personalizzata (€)</label>
+          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`Standard: ${PAGAMENTI_CONFIG.QUOTA_ANNUALE}€`} />
+        </div>
+        {titolo === 'Nuovo Atleta' && (
+          <div className="form-group">
+            <label className="form-label">Tipo rate</label>
+            <select className="form-input" value={form.tipoRate || '1'} onChange={e => update('tipoRate', e.target.value)}>
+              <option value="1">Annuale (unica soluzione)</option>
+              <option value="2">2 rate (semestrale)</option>
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="section-title">Contatti genitore</div>
@@ -344,7 +357,8 @@ function NuovoAtleta({ onBack, onSaved }) {
     idCategoria: '', genitoreNome: '', genitoreTelefono: '',
     genitoreEmail: '', scadCertificato: '', numeroFISR: '',
     scadFISR: '', dataIscrizione: new Date().toISOString().split('T')[0],
-    note: '', noleggio: false, taglia: '', numeroGara: ''
+    note: '', noleggio: false, taglia: '', numeroGara: '',
+    quotaPersonalizzata: '', tipoRate: '1'
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -381,6 +395,14 @@ function NuovoAtleta({ onBack, onSaved }) {
         if (libero) {
           await assegnaPattino(libero.ID_Pattino, idAtleta, form.dataIscrizione)
         }
+      }
+
+      // Genera quote associative
+      const importoQuota = form.quotaPersonalizzata
+        ? parseFloat(form.quotaPersonalizzata)
+        : PAGAMENTI_CONFIG.QUOTA_ANNUALE
+      if (importoQuota > 0) {
+        await generaQuoteAtleta(idAtleta, `${form.nome} ${form.cognome}`, importoQuota, form.tipoRate || '1')
       }
 
       setSuccesso(true)
@@ -431,7 +453,8 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
     dataIscrizione: atleta.Data_Iscrizione || '',
     note: atleta.Note || '',
     noleggio: false, taglia: '',
-    numeroGara: atleta.Numero_Gara || ''
+    numeroGara: atleta.Numero_Gara || '',
+    quotaPersonalizzata: atleta.Quota_Personalizzata || ''
   })
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
@@ -457,7 +480,8 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
         Genitore_Telefono: form.genitoreTelefono, Genitore_Email: form.genitoreEmail,
         Scad_Certificato: form.scadCertificato, Scad_FISR: form.scadFISR,
         Numero_FISR: form.numeroFISR, Data_Iscrizione: form.dataIscrizione,
-        Note: form.note, Numero_Gara: form.numeroGara
+        Note: form.note, Numero_Gara: form.numeroGara,
+        Quota_Personalizzata: form.quotaPersonalizzata
       })
 
       await aggiornaRiga(SHEETS.ATLETI, idx, valori)
@@ -948,6 +972,9 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
         </>
       )}
 
+      {/* PAGAMENTI */}
+      <SezionePagamenti atleta={atleta} pattini={pattiniAtleta} />
+
       {/* DOCUMENTI */}
       <div className="section-title">Documenti</div>
       <div className="card">
@@ -1086,6 +1113,98 @@ function SchedaAtleta({ atleta, atleti, pattini, onBack, onModifica, onDisattiva
         </button>
       )}
     </div>
+  )
+}
+
+// ============================================================
+// SEZIONE PAGAMENTI
+// ============================================================
+
+function SezionePagamenti({ atleta, pattini }) {
+  const [pagamenti, setPagamenti] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(null)
+
+  useEffect(() => {
+    getPagamentiAtleta(atleta.ID_Atleta)
+      .then(setPagamenti)
+      .finally(() => setLoading(false))
+  }, [atleta.ID_Atleta])
+
+  async function togglePagato(pag) {
+    const nuovoStato = pag.Stato === 'Pagato' ? 'Da pagare' : 'Pagato'
+    const dataPag = nuovoStato === 'Pagato' ? new Date().toISOString().split('T')[0] : ''
+    setSaving(pag.ID_Pagamento)
+    try {
+      await aggiornaPagamento(pag.ID_Pagamento, { Stato: nuovoStato, Data_Pagamento: dataPag })
+      setPagamenti(prev => prev.map(p =>
+        p.ID_Pagamento === pag.ID_Pagamento ? { ...p, Stato: nuovoStato, Data_Pagamento: dataPag } : p
+      ))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  // Calcolo noleggio
+  const noleggioInfo = pattini.map(p => {
+    if (!p.Data_Inizio_Noleggio) return null
+    const inizio = new Date(p.Data_Inizio_Noleggio)
+    const oggi = new Date()
+    const mesi = Math.max(1, Math.round((oggi - inizio) / (1000 * 60 * 60 * 24 * 30)))
+    const importo = mesi * PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
+    return { ...p, mesi, importo }
+  }).filter(Boolean)
+
+  return (
+    <>
+      <div className="section-title">Pagamenti</div>
+      <div className="card">
+        {loading ? (
+          <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
+        ) : (
+          <>
+            {/* Quote associative */}
+            {pagamenti.length === 0 && noleggioInfo.length === 0 && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>Nessun pagamento registrato</div>
+            )}
+            {pagamenti.map(pag => (
+              <div key={pag.ID_Pagamento} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>{pag.Descrizione}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    €{pag.Importo}{pag.Data_Scadenza ? ` · Scad. ${pag.Data_Scadenza}` : ''}
+                    {pag.Data_Pagamento ? ` · Pagato il ${pag.Data_Pagamento}` : ''}
+                  </div>
+                </div>
+                <button
+                  className={`badge ${pag.Stato === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}
+                  style={{ cursor: saving === pag.ID_Pagamento ? 'wait' : 'pointer', border: 'none', flexShrink: 0 }}
+                  disabled={saving === pag.ID_Pagamento}
+                  onClick={() => togglePagato(pag)}
+                >
+                  {pag.Stato === 'Pagato' ? 'Pagato ✓' : 'Da pagare'}
+                </button>
+              </div>
+            ))}
+
+            {/* Riepilogo noleggio */}
+            {noleggioInfo.map(n => (
+              <div key={n.ID_Pattino} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>Noleggio {n.Marca || n.ID_Pattino} T.{n.Taglia}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    {n.mesi} mesi · €{n.importo} (€{PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE}/mese)
+                  </div>
+                </div>
+                <span className={`badge ${n.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
+                  {n.Stato_Pagamento || 'Da pagare'}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </>
   )
 }
 
