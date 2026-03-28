@@ -725,6 +725,15 @@ function ModificaEvento({ evento, onBack, onSaved }) {
 
   useEffect(() => { getCategorie().then(setCategorie) }, [])
 
+  useEffect(() => {
+    if (categorie.length > 0) {
+      console.log('CHIAVI CATEGORIA:', JSON.stringify(Object.keys(categorie[0])))
+      console.log('OGGETTO COMPLETO:', JSON.stringify(categorie[0]))
+      console.log('ID_Categoria value:', categorie[0].ID_Categoria)
+      console.log('ID_Categoria type:', typeof categorie[0].ID_Categoria)
+    }
+  }, [categorie])
+
   const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
 
   async function handleSalva() {
