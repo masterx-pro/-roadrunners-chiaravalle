@@ -607,12 +607,16 @@ function NuovoEvento({ onBack, onSaved }) {
                   className={`badge ${isSelected ? 'badge-danger' : 'badge-muted'}`}
                   style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '13px', border: 'none', transition: 'all 0.2s' }}
                   onClick={() => {
-                    setForm(prev => ({
-                      ...prev,
-                      idCategoria: isSelected
-                        ? prev.idCategoria.filter(id => id !== c.ID_Categoria)
-                        : [...prev.idCategoria, c.ID_Categoria]
-                    }))
+                    const catId = c.ID_Categoria
+                    setForm(prev => {
+                      const sel = prev.idCategoria.includes(catId)
+                      return {
+                        ...prev,
+                        idCategoria: sel
+                          ? prev.idCategoria.filter(id => id !== catId)
+                          : [...prev.idCategoria, catId]
+                      }
+                    })
                   }}
                 >
                   {isSelected ? '✓ ' : ''}{c.Nome}
@@ -809,12 +813,16 @@ function ModificaEvento({ evento, onBack, onSaved }) {
                   className={`badge ${isSelected ? 'badge-danger' : 'badge-muted'}`}
                   style={{ cursor: 'pointer', padding: '6px 12px', fontSize: '13px', border: 'none', transition: 'all 0.2s' }}
                   onClick={() => {
-                    setForm(prev => ({
-                      ...prev,
-                      idCategoria: isSelected
-                        ? prev.idCategoria.filter(id => id !== c.ID_Categoria)
-                        : [...prev.idCategoria, c.ID_Categoria]
-                    }))
+                    const catId = c.ID_Categoria
+                    setForm(prev => {
+                      const sel = prev.idCategoria.includes(catId)
+                      return {
+                        ...prev,
+                        idCategoria: sel
+                          ? prev.idCategoria.filter(id => id !== catId)
+                          : [...prev.idCategoria, catId]
+                      }
+                    })
                   }}
                 >
                   {isSelected ? '✓ ' : ''}{c.Nome}
