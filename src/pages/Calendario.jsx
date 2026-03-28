@@ -51,6 +51,26 @@ export default function Calendario() {
     carica()
   }, [])
 
+  // Navigazione da Dashboard → dettaglio evento
+  useEffect(() => {
+    if (loading || eventi.length === 0) return
+    const filtroRaw = sessionStorage.getItem('dashboard_filtro')
+    if (filtroRaw) {
+      try {
+        const filtro = JSON.parse(filtroRaw)
+        if (filtro.evento) {
+          const eventoTrovato = eventi.find(e => e.ID_Evento === filtro.evento)
+          if (eventoTrovato) {
+            const isGara = eventoTrovato.Tipo === 'Gara' || eventoTrovato.Tipo === 'Trasferta'
+            navigaVista({ tipo: isGara ? 'gara' : 'presenze', dati: eventoTrovato })
+            setTab('eventi')
+          }
+        }
+        sessionStorage.removeItem('dashboard_filtro')
+      } catch (e) {}
+    }
+  }, [loading, eventi])
+
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   if (vista?.tipo === 'modificaEvento') {

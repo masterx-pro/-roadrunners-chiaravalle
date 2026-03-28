@@ -183,7 +183,9 @@ export default function Dashboard({ onNavigate }) {
 
       {/* PROSSIMO EVENTO */}
       {prossimoEvento && (
-        <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="card" style={{ marginBottom: '16px', cursor: 'pointer' }}
+          onClick={() => onNavigate?.('calendario', { evento: prossimoEvento.ID_Evento })}
+        >
           <div className="section-title">Prossimo evento</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
@@ -193,28 +195,8 @@ export default function Dashboard({ onNavigate }) {
                 {prossimoEvento.Luogo && ` — ${prossimoEvento.Luogo}`}
               </div>
             </div>
-            <span className={`badge badge-${prossimoEvento.Tipo === 'Gara' ? 'danger' : 'muted'}`}>
-              {prossimoEvento.Tipo}
-            </span>
+            <span style={{ color: 'var(--text-secondary)', fontSize: '18px' }}>›</span>
           </div>
-        </div>
-      )}
-
-      {/* ALERT NOLEGGIO */}
-      {trimestre && daPagare.length > 0 && (
-        <div className="card" style={{ borderColor: 'rgba(245,158,11,0.3)', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-            <span>💰</span>
-            <div className="section-title" style={{ margin: 0 }}>Noleggio — {trimestre.label}</div>
-          </div>
-          <div style={{ color: 'var(--accent-warn)', fontWeight: '600' }}>
-            {daPagare.length} atleti da riscuotere
-          </div>
-          {scadenzaTrimestre && (
-            <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-              Scadenza trimestre: {formattaData(scadenzaTrimestre)}
-            </div>
-          )}
         </div>
       )}
 
