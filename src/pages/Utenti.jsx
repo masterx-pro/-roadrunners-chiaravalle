@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getUtentiAutorizzati, aggiungiRiga, aggiornaRiga, scriviLog, getConfigurazione, aggiornaParametro, getAtleti, getCategorie, getPattini, aggiornaCategorieBatch, creaCartelleMancanti, generaPagamentiNoleggioTrimestre } from '../utils/sheetsApi'
+import { getUtentiAutorizzati, aggiungiRiga, aggiornaRiga, scriviLog, getConfigurazione, aggiornaParametro, getAtleti, getCategorie, getPattini, aggiornaCategorieBatch, creaCartelleMancanti, generaPagamentiNoleggioTrimestre, condividiConUtente, rimuoviCondivisione, inviaEmailBenvenuto } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 
 export default function Utenti() {
@@ -180,6 +180,18 @@ function GestioneUtenti({ onBack }) {
     await aggiornaRiga(SHEETS.UTENTI, idx, [
       utente.Email, utente.Nome, utente.Ruolo || 'Dirigente', nuovoStato
     ])
+
+    // Gestisci condivisione Sheet/Drive
+    try {
+      if (nuovoStato === 'FALSE') {
+        await rimuoviCondivisione(utente.Email)
+      } else {
+        await condividiConUtente(utente.Email)
+      }
+    } catch (e) {
+      console.error('Errore gestione condivisione:', e)
+    }
+
     ricarica()
   }
 
@@ -256,6 +268,20 @@ function FormUtente({ titolo, utente, indice, onBack, onSaved }) {
       } else {
         await aggiungiRiga(SHEETS.UTENTI, valori)
         await scriviLog('Nuovo', 'Utente', email.trim())
+
+        // Auto-condivisione Sheet e Drive
+        try {
+          await condividiConUtente(email.trim())
+        } catch (e) {
+          console.error('Errore condivisione:', e)
+        }
+
+        // Invio email di benvenuto
+        try {
+          await inviaEmailBenvenuto(email.trim(), nome.trim())
+        } catch (e) {
+          console.error('Errore invio email:', e)
+        }
       }
       setSuccesso(true)
       setTimeout(() => onSaved(), 1500)
@@ -274,6 +300,11 @@ function FormUtente({ titolo, utente, indice, onBack, onSaved }) {
         <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', textTransform: 'uppercase', color: 'var(--accent-ok)' }}>
           {isModifica ? 'Utente aggiornato' : 'Utente creato'}
         </div>
+        {!isModifica && (
+          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', textAlign: 'center', maxWidth: '280px' }}>
+            Email di accesso inviata a {email}
+          </div>
+        )}
       </div>
     )
   }

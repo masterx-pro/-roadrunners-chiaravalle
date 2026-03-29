@@ -1019,3 +1019,141 @@ export async function salvaStoricoScadenza(idAtleta, nomeAtleta, tipo, dataEmiss
     dataEmissione || '', dataScadenza || '', nomeFile || ''
   ])
 }
+
+// ============================================================
+// CONDIVISIONE E NOTIFICHE
+// ============================================================
+
+export async function condividiConUtente(email) {
+  const token = getToken()
+  if (!token) throw new Error('Token non disponibile')
+
+  const sheetId = GOOGLE_CONFIG.SPREADSHEET_ID
+  if (!GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID) await getConfigDrive()
+  const driveRootId = GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID
+
+  // Condividi lo Sheet
+  try {
+    await fetch(`${DRIVE_URL}/files/${sheetId}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email, sendNotificationEmail: false })
+    })
+  } catch (e) {
+    console.error('Errore condivisione Sheet:', e)
+  }
+
+  // Condividi la cartella Drive root
+  if (driveRootId) {
+    try {
+      await fetch(`${DRIVE_URL}/files/${driveRootId}/permissions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: email, sendNotificationEmail: false })
+      })
+    } catch (e) {
+      console.error('Errore condivisione Drive:', e)
+    }
+  }
+}
+
+export async function rimuoviCondivisione(email) {
+  const token = getToken()
+  if (!token) return
+
+  const sheetId = GOOGLE_CONFIG.SPREADSHEET_ID
+  if (!GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID) await getConfigDrive()
+  const driveRootId = GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID
+
+  // Rimuovi permesso dallo Sheet
+  try {
+    const res = await fetch(`${DRIVE_URL}/files/${sheetId}/permissions?fields=permissions(id,emailAddress)`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const data = await res.json()
+    const permesso = (data.permissions || []).find(p => p.emailAddress?.toLowerCase() === email.toLowerCase())
+    if (permesso) {
+      await fetch(`${DRIVE_URL}/files/${sheetId}/permissions/${permesso.id}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      })
+    }
+  } catch (e) {
+    console.error('Errore rimozione condivisione Sheet:', e)
+  }
+
+  // Rimuovi permesso dal Drive
+  if (driveRootId) {
+    try {
+      const res = await fetch(`${DRIVE_URL}/files/${driveRootId}/permissions?fields=permissions(id,emailAddress)`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      const permesso = (data.permissions || []).find(p => p.emailAddress?.toLowerCase() === email.toLowerCase())
+      if (permesso) {
+        await fetch(`${DRIVE_URL}/files/${driveRootId}/permissions/${permesso.id}`, {
+          method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+        })
+      }
+    } catch (e) {
+      console.error('Errore rimozione condivisione Drive:', e)
+    }
+  }
+}
+
+export async function inviaEmailBenvenuto(emailDestinatario, nomeDestinatario) {
+  const token = getToken()
+  if (!token) throw new Error('Token non disponibile')
+
+  const config = await getConfigurazione()
+  const nomeSocieta = config.Nome_Societa || 'La tua società sportiva'
+  const cittaSocieta = config.Citta_Societa || ''
+  const emailSocieta = config.Email_Societa || ''
+
+  const link = `${window.location.origin}?sheet=${GOOGLE_CONFIG.SPREADSHEET_ID}`
+
+  const oggetto = `Accesso Gestionale ${nomeSocieta}`
+  const corpo = [
+    `Ciao ${nomeDestinatario || ''},`,
+    '',
+    `sei stato abilitato al Gestionale di ${nomeSocieta}${cittaSocieta ? ' - ' + cittaSocieta : ''}.`,
+    '',
+    'Clicca il link per accedere:',
+    link,
+    '',
+    `Accedi con il tuo account Google (${emailDestinatario}).`,
+    '',
+    `Per qualsiasi problema contatta: ${emailSocieta || "l'amministratore della società"}.`,
+    '',
+    `${nomeSocieta}${cittaSocieta ? ' - ' + cittaSocieta : ''}`,
+    '',
+    '---',
+    'Questa email è stata inviata automaticamente dal Gestionale Skating.',
+    'Sviluppato da Mattia Prosperi — masterxpro@gmail.com'
+  ].join('\n')
+
+  const messaggio = [
+    `To: ${emailDestinatario}`,
+    `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(oggetto)))}?=`,
+    'Content-Type: text/plain; charset=UTF-8',
+    '',
+    corpo
+  ].join('\r\n')
+
+  const encoded = btoa(unescape(encodeURIComponent(messaggio)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+
+  const res = await fetch('https://www.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: encoded })
+  })
+
+  if (!res.ok) {
+    const errData = await res.json()
+    throw new Error('Errore invio email: ' + (errData.error?.message || res.status))
+  }
+
+  return true
+}
