@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione, getStoricoScadenze, salvaStoricoScadenza } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -1168,7 +1168,10 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div style={{ fontWeight: '600', fontSize: '14px' }}>Certificato medico</div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{formattaData(atleta.Scad_Certificato)}</div>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+              {atleta.Emissione_Certificato && `Dal ${new Date(atleta.Emissione_Certificato).toLocaleDateString('it-IT')} · `}
+              {atleta.Scad_Certificato ? formattaData(atleta.Scad_Certificato) : 'Non inserito'}
+            </div>
           </div>
           {badgeStato(statoCert)}
         </div>
@@ -1176,7 +1179,8 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
           <div>
             <div style={{ fontWeight: '600', fontSize: '14px' }}>Tessera FISR</div>
             <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-              {atleta.Numero_FISR || '—'} · {formattaData(atleta.Scad_FISR)}
+              {atleta.Numero_FISR || '—'} · {atleta.Emissione_FISR && `Dal ${new Date(atleta.Emissione_FISR).toLocaleDateString('it-IT')} · `}
+              {atleta.Scad_FISR ? formattaData(atleta.Scad_FISR) : 'Non inserito'}
             </div>
           </div>
           {badgeStato(statoFISR)}
@@ -1354,34 +1358,63 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
 // ============================================================
 
 function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
+  const [emissioneCert, setEmissioneCert] = useState(atleta.Emissione_Certificato || '')
   const [scadCert, setScadCert] = useState(atleta.Scad_Certificato || '')
+  const [emissioneFISR, setEmissioneFISR] = useState(atleta.Emissione_FISR || '')
   const [scadFISR, setScadFISR] = useState(atleta.Scad_FISR || '')
   const [numeroFISR, setNumeroFISR] = useState(atleta.Numero_FISR || '')
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(null)
+  const [storico, setStorico] = useState([])
   const [docCaricato, setDocCaricato] = useState({ certificato: false, fisr: false })
+  const [refreshDocs, setRefreshDocs] = useState(0)
 
   useEffect(() => {
-    if (!atleta.Drive_Folder_ID) return
-    listaDocumentiAtleta(atleta.Drive_Folder_ID).then(files => {
-      const nomi = files.map(f => f.name?.toLowerCase() || '')
-      setDocCaricato({
-        certificato: nomi.some(n => n.includes('certificato_medico')),
-        fisr: nomi.some(n => n.includes('tessera_fisr'))
-      })
-    }).catch(() => {})
-  }, [atleta.Drive_Folder_ID])
-  const [refreshDocs, setRefreshDocs] = useState(0)
+    getStoricoScadenze(atleta.ID_Atleta).then(setStorico)
+
+    if (atleta.Drive_Folder_ID) {
+      listaDocumentiAtleta(atleta.Drive_Folder_ID).then(files => {
+        const nomi = files.map(f => f.name?.toLowerCase() || '')
+        setDocCaricato({
+          certificato: nomi.some(n => n.includes('certificato_medico')),
+          fisr: nomi.some(n => n.includes('tessera_fisr'))
+        })
+      }).catch(() => {})
+    }
+  }, [atleta.ID_Atleta])
+
+  const storicoCert = storico.filter(s => s.Tipo === 'Certificato')
+  const storicoFISR = storico.filter(s => s.Tipo === 'Tessera_FISR')
 
   async function handleSalva() {
     setSaving(true)
     try {
+      const nomeAtleta = `${atleta.Nome} ${atleta.Cognome}`
+
+      // Se la scadenza certificato è cambiata → salva la vecchia nello storico
+      if (atleta.Scad_Certificato && scadCert !== atleta.Scad_Certificato) {
+        await salvaStoricoScadenza(
+          atleta.ID_Atleta, nomeAtleta, 'Certificato',
+          atleta.Emissione_Certificato || '', atleta.Scad_Certificato, ''
+        )
+      }
+
+      // Se la scadenza FISR è cambiata → salva la vecchia nello storico
+      if (atleta.Scad_FISR && scadFISR !== atleta.Scad_FISR) {
+        await salvaStoricoScadenza(
+          atleta.ID_Atleta, nomeAtleta, 'Tessera_FISR',
+          atleta.Emissione_FISR || '', atleta.Scad_FISR, ''
+        )
+      }
+
       await aggiornaAtletaSicuro(atleta.ID_Atleta, {
         Scad_Certificato: scadCert,
         Scad_FISR: scadFISR,
-        Numero_FISR: numeroFISR
+        Numero_FISR: numeroFISR,
+        Emissione_Certificato: emissioneCert,
+        Emissione_FISR: emissioneFISR,
       })
-      await scriviLog('Modifica', 'Scadenze', `${atleta.Nome} ${atleta.Cognome}`)
+      await scriviLog('Modifica', 'Scadenze', nomeAtleta)
       onSaved()
     } catch (err) {
       console.error(err)
@@ -1402,10 +1435,11 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
       }
       const fileFinale = await comprimiImmagine(file)
       const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
-      const nomeBase = tipo === 'certificato'
-        ? `${atleta.Nome}_${atleta.Cognome}_certificato_medico`.replace(/\s+/g, '_')
-        : `${atleta.Nome}_${atleta.Cognome}_tessera_FISR`.replace(/\s+/g, '_')
-      await caricaDocumento(fileFinale, `${nomeBase}.${ext}`, folderId)
+      const anno = new Date().getFullYear()
+      const nomeFile = tipo === 'certificato'
+        ? `${atleta.Nome}_${atleta.Cognome}_certificato_medico_${anno}.${ext}`.replace(/\s+/g, '_')
+        : `${atleta.Nome}_${atleta.Cognome}_tessera_FISR_${anno}.${ext}`.replace(/\s+/g, '_')
+      await caricaDocumento(fileFinale, nomeFile, folderId)
       setRefreshDocs(prev => prev + 1)
       setDocCaricato(prev => ({ ...prev, [tipo]: true }))
     } catch (err) {
@@ -1424,30 +1458,52 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
       </div>
 
       <div className="card" style={{ marginBottom: '16px' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', marginBottom: '12px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700' }}>
           {atleta.Nome} {atleta.Cognome}
         </div>
       </div>
 
+      {/* CERTIFICATO MEDICO */}
       <div className="section-title">Certificato medico</div>
       <div className="card" style={{ marginBottom: '16px' }}>
+        <div className="form-group">
+          <label className="form-label">Data emissione</label>
+          <input className="form-input" type="date" value={emissioneCert} onChange={e => setEmissioneCert(e.target.value)} />
+        </div>
         <div className="form-group">
           <label className="form-label">Data scadenza</label>
           <input className="form-input" type="date" value={scadCert} onChange={e => setScadCert(e.target.value)} />
         </div>
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          capture="environment"
+
+        <input type="file" accept="image/*,application/pdf" capture="environment"
           onChange={(e) => handleUploadDoc('certificato', e.target.files[0])}
-          style={{ display: 'none' }}
-          id="upload-cert"
-        />
-        <label htmlFor="upload-cert" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center', color: docCaricato.certificato ? 'var(--accent-ok)' : undefined }}>
+          style={{ display: 'none' }} id="upload-cert" />
+        <label htmlFor="upload-cert" className="btn btn-ghost" style={{
+          fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center',
+          color: docCaricato.certificato ? 'var(--accent-ok)' : 'var(--text-secondary)',
+          borderColor: docCaricato.certificato ? 'rgba(16,185,129,0.3)' : 'var(--border)'
+        }}>
           {uploading === 'certificato' ? 'Caricamento...' : docCaricato.certificato ? '✅ Certificato caricato (tap per sostituire)' : '📎 Carica certificato medico (foto o file)'}
         </label>
+
+        {storicoCert.length > 0 && (
+          <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', marginBottom: '6px' }}>Storico</div>
+            {storicoCert.map((s, i) => (
+              <div key={i} style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '4px 0', display: 'flex', justifyContent: 'space-between' }}>
+                <span>
+                  {s.Data_Emissione ? new Date(s.Data_Emissione).toLocaleDateString('it-IT') : '—'}
+                  {' → '}
+                  {s.Data_Scadenza ? new Date(s.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
+                </span>
+                {s.File_Nome && <span style={{ fontSize: '11px' }}>📄</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
+      {/* TESSERA FISR */}
       <div className="section-title">Tessera FISR</div>
       <div className="card" style={{ marginBottom: '16px' }}>
         <div className="form-group">
@@ -1455,20 +1511,40 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           <input className="form-input" value={numeroFISR} onChange={e => setNumeroFISR(e.target.value)} placeholder="Numero FISR" />
         </div>
         <div className="form-group">
+          <label className="form-label">Data emissione</label>
+          <input className="form-input" type="date" value={emissioneFISR} onChange={e => setEmissioneFISR(e.target.value)} />
+        </div>
+        <div className="form-group">
           <label className="form-label">Data scadenza</label>
           <input className="form-input" type="date" value={scadFISR} onChange={e => setScadFISR(e.target.value)} />
         </div>
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          capture="environment"
+
+        <input type="file" accept="image/*,application/pdf" capture="environment"
           onChange={(e) => handleUploadDoc('fisr', e.target.files[0])}
-          style={{ display: 'none' }}
-          id="upload-fisr"
-        />
-        <label htmlFor="upload-fisr" className="btn btn-ghost" style={{ fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center', color: docCaricato.fisr ? 'var(--accent-ok)' : undefined }}>
-          {uploading === 'fisr' ? 'Caricamento...' : docCaricato.fisr ? '✅ Tessera FISR caricata (tap per sostituire)' : '📎 Carica tessera FISR (foto o file)'}
+          style={{ display: 'none' }} id="upload-fisr" />
+        <label htmlFor="upload-fisr" className="btn btn-ghost" style={{
+          fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center',
+          color: docCaricato.fisr ? 'var(--accent-ok)' : 'var(--text-secondary)',
+          borderColor: docCaricato.fisr ? 'rgba(16,185,129,0.3)' : 'var(--border)'
+        }}>
+          {uploading === 'fisr' ? 'Caricamento...' : docCaricato.fisr ? '✅ Tessera caricata (tap per sostituire)' : '📎 Carica tessera FISR (foto o file)'}
         </label>
+
+        {storicoFISR.length > 0 && (
+          <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', marginBottom: '6px' }}>Storico</div>
+            {storicoFISR.map((s, i) => (
+              <div key={i} style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '4px 0', display: 'flex', justifyContent: 'space-between' }}>
+                <span>
+                  {s.Data_Emissione ? new Date(s.Data_Emissione).toLocaleDateString('it-IT') : '—'}
+                  {' → '}
+                  {s.Data_Scadenza ? new Date(s.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
+                </span>
+                {s.File_Nome && <span style={{ fontSize: '11px' }}>📄</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {atleta.Drive_Folder_ID && (

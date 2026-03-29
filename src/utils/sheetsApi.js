@@ -209,10 +209,12 @@ export async function getAtleta(id) {
 // ID_Atleta, Nome, Cognome, Sesso, Luogo_Nascita, Data_Nascita, Codice_Fiscale,
 // ID_Categoria, Genitore_Nome, Nome_Categoria, Genitore_Telefono, Genitore_Email,
 // Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione,
-// Note, Numero_Gara, Quota_Personalizzata, Tipo_Atleta
+// Note, Numero_Gara, Quota_Personalizzata, Tipo_Atleta, Emissione_Certificato, Emissione_FISR
 
 export function buildAtletaRow(a, overrides = {}) {
-  return [
+  const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata','Tipo_Atleta','Emissione_Certificato','Emissione_FISR']
+
+  const base = [
     a.ID_Atleta, a.Nome, a.Cognome, a.Sesso || '', a.Luogo_Nascita || '',
     a.Data_Nascita || '', a.Codice_Fiscale || '', a.ID_Categoria || '',
     a.Genitore_Nome || '', a.Nome_Categoria || '',
@@ -220,10 +222,12 @@ export function buildAtletaRow(a, overrides = {}) {
     a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
     a.Drive_Folder_ID || '', a.Attivo || 'TRUE', a.Data_Iscrizione || '',
     a.Note || '', a.Numero_Gara || '', a.Quota_Personalizzata || '',
-    a.Tipo_Atleta || 'Agonista'
-  ].map((v, i) => {
-    const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata','Tipo_Atleta']
-    return overrides[keys[i]] !== undefined ? overrides[keys[i]] : v
+    a.Tipo_Atleta || 'Agonista', a.Emissione_Certificato || '', a.Emissione_FISR || ''
+  ]
+
+  return base.map((v, i) => {
+    if (overrides[keys[i]] !== undefined) return overrides[keys[i]]
+    return v
   })
 }
 
@@ -238,7 +242,8 @@ export async function creaAtleta(atleta) {
     '', // Drive_Folder_ID
     'TRUE', atleta.dataIscrizione || new Date().toISOString().split('T')[0],
     atleta.note || '', atleta.numeroGara || '',
-    atleta.quotaPersonalizzata || '', atleta.tipoAtleta || 'Agonista'
+    atleta.quotaPersonalizzata || '', atleta.tipoAtleta || 'Agonista',
+    atleta.emissioneCertificato || '', atleta.emissioneFISR || ''
   ]
   await aggiungiRiga(SHEETS.ATLETI, valori)
   await scriviLog('Nuovo', 'Atleta', `${atleta.nome} ${atleta.cognome}`)
@@ -990,4 +995,23 @@ export async function generaPagamentiNoleggioTrimestre() {
     }
   }
   return generati
+}
+
+// ============================================================
+// STORICO SCADENZE (Certificati e Tessere FISR)
+// ============================================================
+
+export async function getStoricoScadenze(idAtleta) {
+  const storico = await leggiSheet(SHEETS.STORICO_SCADENZE)
+  return storico
+    .filter(s => s.ID_Atleta === idAtleta)
+    .sort((a, b) => new Date(b.Data_Scadenza || 0) - new Date(a.Data_Scadenza || 0))
+}
+
+export async function salvaStoricoScadenza(idAtleta, nomeAtleta, tipo, dataEmissione, dataScadenza, nomeFile) {
+  const id = `STO-${String(Date.now()).slice(-6)}`
+  await aggiungiRiga(SHEETS.STORICO_SCADENZE, [
+    id, idAtleta, nomeAtleta, tipo,
+    dataEmissione || '', dataScadenza || '', nomeFile || ''
+  ])
 }

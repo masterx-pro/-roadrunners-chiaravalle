@@ -43,7 +43,8 @@ export const SHEETS = {
   LOG:             'Log',
   STORICO_PATTINI: 'Storico_Pattini',
   PAGAMENTI:       'Pagamenti',
-  CONFIGURAZIONE:  'Configurazione'
+  CONFIGURAZIONE:  'Configurazione',
+  STORICO_SCADENZE: 'Storico_Scadenze'
 }
 
 // ============================================================
