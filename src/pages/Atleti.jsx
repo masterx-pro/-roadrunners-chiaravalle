@@ -1039,12 +1039,12 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
   }, [folderId])
 
   function trovaDocPerCategoria(catKey) {
-    return documenti.find(d => d.name?.toLowerCase().startsWith(catKey))
+    return documenti.find(d => d.name?.toLowerCase().includes(catKey))
   }
 
   function documentiExtra() {
     return documenti.filter(d =>
-      !PREFISSI_CATEGORIA.some(p => d.name?.toLowerCase().startsWith(p))
+      !PREFISSI_CATEGORIA.some(p => d.name?.toLowerCase().includes(p))
     )
   }
 
