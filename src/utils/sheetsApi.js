@@ -750,3 +750,96 @@ export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate)
   }
   await scriviLog('Quote generate', 'Atleta', nomeAtleta)
 }
+
+// ============================================================
+// NOLEGGIO — primo noleggio stagione + pagamenti trimestrali
+// ============================================================
+
+export async function getDataPrimoNoleggio(idAtleta) {
+  const storico = await leggiSheet(SHEETS.STORICO_PATTINI)
+  const annoStagione = calcolaAnnoInizioStagione()
+  const inizioStagione = new Date(`${annoStagione}-10-01`)
+  const fineStagione = new Date(`${annoStagione + 1}-09-30`)
+
+  // Cerca tutte le assegnazioni dell'atleta in questa stagione
+  const assegnazioni = storico
+    .filter(s => s.ID_Atleta === idAtleta)
+    .filter(s => {
+      const dataInizio = new Date(s.Data_Inizio)
+      return dataInizio >= inizioStagione && dataInizio <= fineStagione
+    })
+    .sort((a, b) => new Date(a.Data_Inizio) - new Date(b.Data_Inizio))
+
+  if (assegnazioni.length > 0) {
+    return assegnazioni[0].Data_Inizio
+  }
+
+  // Se non c'è storico, usa la data del pattino attualmente assegnato
+  const pattini = await leggiSheet(SHEETS.PATTINI)
+  const pattinoAttuale = pattini.find(p => p.ID_Atleta === idAtleta)
+  return pattinoAttuale?.Data_Inizio_Noleggio || null
+}
+
+export async function generaPagamentoNoleggio(idAtleta, nomeAtleta, pattino) {
+  const { trimestreCorrente } = await import('../utils/dateUtils.js')
+  const trimestre = trimestreCorrente()
+  if (!trimestre) return
+
+  const annoStagione = calcolaAnnoInizioStagione()
+  const chiaveTrimestre = `${trimestre.id}-${annoStagione}`
+
+  // Controlla se esiste già un pagamento noleggio per questo trimestre
+  const pagamenti = await leggiSheet(SHEETS.PAGAMENTI)
+  const esistente = pagamenti.find(p =>
+    p.ID_Atleta === idAtleta &&
+    p.Tipo === 'Noleggio' &&
+    p.Descrizione?.includes(chiaveTrimestre)
+  )
+
+  if (esistente) return // già generato
+
+  // Calcola importo: mesi del trimestre × costo mensile
+  const { PAGAMENTI_CONFIG } = await import('../config/google.js')
+  const mesiTrimestre = trimestre.mesi.length
+  const importo = mesiTrimestre * PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
+
+  // Scadenza: ultimo giorno del trimestre
+  const ultimoMese = Math.max(...trimestre.mesi)
+  const annoScadenza = ultimoMese < 10 ? annoStagione + 1 : annoStagione
+  const scadenza = new Date(annoScadenza, ultimoMese, 0).toISOString().split('T')[0]
+
+  const descPattino = `${pattino.Marca || ''} T.${pattino.Taglia || ''}`
+
+  await creaPagamento({
+    idAtleta,
+    nomeAtleta,
+    tipo: 'Noleggio',
+    descrizione: `Noleggio ${descPattino} — ${trimestre.label} (${chiaveTrimestre})`,
+    importo,
+    stato: 'Da pagare',
+    dataScadenza: scadenza,
+  })
+}
+
+export async function generaPagamentiNoleggioTrimestre() {
+  const pattini = await leggiSheet(SHEETS.PATTINI)
+  const atleti = await leggiSheet(SHEETS.ATLETI)
+  const pattiniNoleggiati = pattini.filter(p => p.ID_Atleta)
+
+  let generati = 0
+  for (const pattino of pattiniNoleggiati) {
+    const atleta = atleti.find(a => a.ID_Atleta === pattino.ID_Atleta)
+    if (!atleta) continue
+    try {
+      await generaPagamentoNoleggio(
+        pattino.ID_Atleta,
+        `${atleta.Nome} ${atleta.Cognome}`,
+        pattino
+      )
+      generati++
+    } catch (e) {
+      console.error('Errore generazione pagamento noleggio:', e)
+    }
+  }
+  return generati
+}

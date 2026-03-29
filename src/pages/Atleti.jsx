@@ -1470,9 +1470,44 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
 function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
   const [dataInizio, setDataInizio] = useState(pattino.Data_Inizio_Noleggio || '')
   const [saving, setSaving] = useState(false)
+  const [storico, setStorico] = useState([])
+  const [dataPrimoNoleggio, setDataPrimoNoleggio] = useState(null)
+  const [loadingStorico, setLoadingStorico] = useState(true)
+  const [mostraSostituzione, setMostraSostituzione] = useState(false)
 
-  const mesiNoleggio = dataInizio ? (() => {
-    const inizio = new Date(dataInizio)
+  // Carica storico e primo noleggio
+  useEffect(() => {
+    async function caricaStorico() {
+      try {
+        const { getDataPrimoNoleggio, leggiSheet } = await import('../utils/sheetsApi.js')
+        const { SHEETS } = await import('../config/google.js')
+
+        const primaData = await getDataPrimoNoleggio(atleta.ID_Atleta)
+        setDataPrimoNoleggio(primaData)
+
+        const tuttoStorico = await leggiSheet(SHEETS.STORICO_PATTINI)
+        const annoStagione = new Date().getMonth() >= 9 ? new Date().getFullYear() : new Date().getFullYear() - 1
+        const inizioStagione = new Date(`${annoStagione}-10-01`)
+
+        const storicoStagione = tuttoStorico
+          .filter(s => s.ID_Atleta === atleta.ID_Atleta)
+          .filter(s => new Date(s.Data_Inizio) >= inizioStagione)
+          .sort((a, b) => new Date(a.Data_Inizio) - new Date(b.Data_Inizio))
+
+        setStorico(storicoStagione)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoadingStorico(false)
+      }
+    }
+    caricaStorico()
+  }, [atleta.ID_Atleta])
+
+  // Calcola mesi dalla data del primo noleggio (non dal pattino attuale)
+  const dataRiferimento = dataPrimoNoleggio || dataInizio
+  const mesiNoleggio = dataRiferimento ? (() => {
+    const inizio = new Date(dataRiferimento)
     const oggi = new Date()
     const mesi = (oggi.getFullYear() - inizio.getFullYear()) * 12 + (oggi.getMonth() - inizio.getMonth())
     return Math.max(1, mesi)
@@ -1481,7 +1516,7 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
   const costoMensile = PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
   const totale = mesiNoleggio * costoMensile
 
-  async function handleSalva() {
+  async function handleSalvaData() {
     setSaving(true)
     try {
       const pattini = await getPattini()
@@ -1517,6 +1552,7 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
         <h1 className="page-title" style={{ fontSize: '22px' }}>Noleggio</h1>
       </div>
 
+      {/* Pattino attuale */}
       <div className="card" style={{ marginBottom: '16px' }}>
         <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700' }}>
           {pattino.Marca || pattino.ID_Pattino} — Taglia {pattino.Taglia}
@@ -1526,36 +1562,155 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
         </div>
       </div>
 
+      {/* Dettagli noleggio con calcolo da storico */}
       <div className="section-title">Dettagli noleggio</div>
       <div className="card" style={{ marginBottom: '16px' }}>
         <div className="form-group">
-          <label className="form-label">Data inizio noleggio</label>
+          <label className="form-label">Data inizio noleggio (pattino attuale)</label>
           <input className="form-input" type="date" value={dataInizio} onChange={e => setDataInizio(e.target.value)} />
         </div>
+        {dataPrimoNoleggio && dataPrimoNoleggio !== dataInizio && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Primo noleggio stagione</span>
+            <span style={{ fontWeight: '600' }}>{new Date(dataPrimoNoleggio).toLocaleDateString('it-IT')}</span>
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Durata</span>
+          <span style={{ color: 'var(--text-secondary)' }}>Durata complessiva</span>
           <span style={{ fontWeight: '600' }}>{mesiNoleggio} mesi</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)' }}>
           <span style={{ color: 'var(--text-secondary)' }}>Importo dovuto</span>
           <span style={{ fontWeight: '600', color: 'var(--accent)' }}>€{totale} (€{costoMensile}/mese)</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
-          <span style={{ color: 'var(--text-secondary)' }}>Stato pagamento</span>
-          <span className={`badge ${pattino.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
-            {pattino.Stato_Pagamento || 'Da pagare'}
-          </span>
-        </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-        <button className="btn btn-primary" onClick={handleSalva} disabled={saving} style={{ flex: 1 }}>
+      {/* Storico pattini stagione */}
+      {storico.length > 0 && (
+        <>
+          <div className="section-title">Storico pattini stagione</div>
+          <div className="card" style={{ marginBottom: '16px' }}>
+            {storico.map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i < storico.length - 1 ? '1px solid var(--border)' : 'none', fontSize: '14px' }}>
+                <span>{s.Marca} T.{s.Taglia}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  {new Date(s.Data_Inizio).toLocaleDateString('it-IT')} → {s.Data_Fine ? new Date(s.Data_Fine).toLocaleDateString('it-IT') : 'in corso'}
+                </span>
+              </div>
+            ))}
+            {/* Pattino attuale */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '14px', color: 'var(--accent-ok)' }}>
+              <span>{pattino.Marca} T.{pattino.Taglia}</span>
+              <span>{dataInizio ? new Date(dataInizio).toLocaleDateString('it-IT') : '—'} → in corso</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Bottoni azione */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button className="btn btn-primary" onClick={handleSalvaData} disabled={saving} style={{ flex: 1 }}>
           {saving ? 'Salvataggio...' : 'Salva modifiche'}
         </button>
-        <button className="btn btn-ghost" onClick={handleRestituzione} disabled={saving} style={{ flex: 1, color: 'var(--accent)' }}>
-          🔄 Restituisci
+        <button className="btn btn-ghost" onClick={() => setMostraSostituzione(true)} disabled={saving} style={{ flex: 1 }}>
+          Sostituisci
+        </button>
+        <button className="btn btn-ghost" onClick={handleRestituzione} disabled={saving} style={{ color: 'var(--accent)' }}>
+          Restituisci
         </button>
       </div>
+
+      {/* Pannello sostituzione pattino */}
+      {mostraSostituzione && (
+        <SostituisciPattino
+          atleta={atleta}
+          pattinoAttuale={pattino}
+          onDone={() => { setMostraSostituzione(false); onSaved() }}
+          onAnnulla={() => setMostraSostituzione(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function SostituisciPattino({ atleta, pattinoAttuale, onDone, onAnnulla }) {
+  const [pattiniLiberi, setPattiniLiberi] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [filtroTaglia, setFiltroTaglia] = useState('')
+
+  useEffect(() => {
+    async function carica() {
+      const pattini = await getPattini()
+      const liberi = pattini.filter(p => !p.ID_Atleta && p.Stato !== 'Rotto')
+      setPattiniLiberi(liberi)
+      setLoading(false)
+    }
+    carica()
+  }, [])
+
+  async function handleSostituisci(nuovoPattino) {
+    if (!confirm(`Sostituire ${pattinoAttuale.Marca} T.${pattinoAttuale.Taglia} con ${nuovoPattino.Marca} T.${nuovoPattino.Taglia}?`)) return
+    setSaving(true)
+    try {
+      // 1. Restituisci il pattino attuale (va nello storico, torna libero)
+      await restituisciPattino(pattinoAttuale.ID_Pattino)
+
+      // 2. Assegna il nuovo pattino con data di oggi
+      await assegnaPattino(nuovoPattino.ID_Pattino, atleta.ID_Atleta)
+
+      await scriviLog('Sostituzione', 'Pattino',
+        `${atleta.Nome} ${atleta.Cognome}: ${pattinoAttuale.Marca} T.${pattinoAttuale.Taglia} → ${nuovoPattino.Marca} T.${nuovoPattino.Taglia}`)
+
+      onDone()
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante la sostituzione')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const pattiniFiltrati = filtroTaglia
+    ? pattiniLiberi.filter(p => String(p.Taglia).includes(filtroTaglia))
+    : pattiniLiberi
+
+  if (loading) return <div className="loading-center">Caricamento pattini...</div>
+
+  return (
+    <div className="card" style={{ marginBottom: '16px' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+        Scegli nuovo pattino
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Filtra per taglia</label>
+        <input className="form-input" type="number" value={filtroTaglia} onChange={e => setFiltroTaglia(e.target.value)} placeholder="Es. 41" />
+      </div>
+
+      {pattiniFiltrati.length === 0 ? (
+        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '16px' }}>
+          Nessun pattino libero{filtroTaglia ? ` per taglia ${filtroTaglia}` : ''}
+        </div>
+      ) : (
+        pattiniFiltrati.map(p => (
+          <div
+            key={p.ID_Pattino}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
+            onClick={() => !saving && handleSostituisci(p)}
+          >
+            <div>
+              <div style={{ fontWeight: '600' }}>{p.Marca} — Taglia {p.Taglia}</div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{p.Stato} · {p.ID_Pattino}</div>
+            </div>
+            <span style={{ color: 'var(--accent)', fontSize: '13px' }}>Seleziona →</span>
+          </div>
+        ))
+      )}
+
+      <button className="btn btn-ghost btn-full" onClick={onAnnulla} style={{ marginTop: '12px' }}>
+        Annulla
+      </button>
     </div>
   )
 }
@@ -1716,16 +1871,6 @@ function SezionePagamenti({ atleta, pattini, onTap }) {
     }
   }
 
-  // Calcolo noleggio
-  const noleggioInfo = pattini.map(p => {
-    if (!p.Data_Inizio_Noleggio) return null
-    const inizio = new Date(p.Data_Inizio_Noleggio)
-    const oggi = new Date()
-    const mesi = Math.max(1, Math.round((oggi - inizio) / (1000 * 60 * 60 * 24 * 30)))
-    const importo = mesi * PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
-    return { ...p, mesi, importo }
-  }).filter(Boolean)
-
   return (
     <>
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1737,8 +1882,7 @@ function SezionePagamenti({ atleta, pattini, onTap }) {
           <div style={{ color: 'var(--text-secondary)' }}>Caricamento...</div>
         ) : (
           <>
-            {/* Quote associative */}
-            {pagamenti.length === 0 && noleggioInfo.length === 0 && (
+            {pagamenti.length === 0 && (
               <div style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px 0' }}>Nessun pagamento registrato</div>
             )}
             {pagamenti.map(pag => (
@@ -1758,21 +1902,6 @@ function SezionePagamenti({ atleta, pattini, onTap }) {
                 >
                   {pag.Stato === 'Pagato' ? 'Pagato ✓' : 'Da pagare'}
                 </button>
-              </div>
-            ))}
-
-            {/* Riepilogo noleggio */}
-            {noleggioInfo.map(n => (
-              <div key={n.ID_Pattino} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: '600', fontSize: '14px' }}>Noleggio {n.Marca || n.ID_Pattino} T.{n.Taglia}</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {n.mesi} mesi · €{n.importo} (€{PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE}/mese)
-                  </div>
-                </div>
-                <span className={`badge ${n.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
-                  {n.Stato_Pagamento || 'Da pagare'}
-                </span>
               </div>
             ))}
           </>

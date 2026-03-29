@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet, generaPagamentiNoleggioTrimestre } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData, trimestreCorrente, scadenzaTrimestreCorrente, pattiniDaPagare } from '../utils/dateUtils'
 
@@ -36,6 +36,12 @@ export default function Dashboard({ nav }) {
           } else if (!ultimoTrimestre) {
             localStorage.setItem('ultimo_trimestre', chiaveTrimestre)
           }
+        }
+        // Genera pagamenti noleggio per il trimestre corrente (se mancanti)
+        try {
+          await generaPagamentiNoleggioTrimestre()
+        } catch (e) {
+          console.error('Errore generazione pagamenti noleggio:', e)
         }
       } catch (err) {
         console.error(err)
