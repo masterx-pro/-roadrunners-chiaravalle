@@ -16,19 +16,74 @@ function authHeaders() {
 }
 
 // ============================================================
-// SHEETS — lettura e scrittura
+// CACHE LETTURE SHEET
 // ============================================================
+const sheetCache = {}
+const CACHE_DURATA = 30 * 1000 // 30 secondi
 
-export async function leggiSheet(nomeSheet) {
-  const url = `${BASE_URL}/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${nomeSheet}`
-  const res = await fetch(url, { headers: authHeaders() })
-  const data = await res.json()
+// Funzione per invalidare la cache di un foglio (dopo scritture)
+export function invalidaCache(nomeSheet) {
+  if (nomeSheet) {
+    delete sheetCache[nomeSheet]
+  } else {
+    Object.keys(sheetCache).forEach(k => delete sheetCache[k])
+  }
+}
+
+function parseSheetData(data) {
   const [intestazioni, ...righe] = data.values || []
-  // Pulisci nomi colonne da BOM e spazi invisibili
+  if (!intestazioni) return []
   const headers = intestazioni.map(h => h.replace(/^\uFEFF/, '').trim())
   return righe.map(riga =>
     Object.fromEntries(headers.map((col, i) => [col, (riga[i] ?? '').toString().trim()]))
   )
+}
+
+// ============================================================
+// SHEETS — lettura e scrittura
+// ============================================================
+
+export async function leggiSheet(nomeSheet) {
+  const ora = Date.now()
+
+  // Usa cache se fresca
+  if (sheetCache[nomeSheet] && (ora - sheetCache[nomeSheet].time) < CACHE_DURATA) {
+    return sheetCache[nomeSheet].data
+  }
+
+  const url = `${BASE_URL}/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${nomeSheet}`
+  const res = await fetch(url, { headers: authHeaders() })
+
+  // Gestione errore 429
+  if (res.status === 429) {
+    console.warn(`Rate limit per ${nomeSheet}, uso cache se disponibile`)
+    if (sheetCache[nomeSheet]) {
+      return sheetCache[nomeSheet].data
+    }
+    // Aspetta 2 secondi e riprova UNA volta
+    await new Promise(r => setTimeout(r, 2000))
+    const retry = await fetch(url, { headers: authHeaders() })
+    if (!retry.ok) {
+      throw new Error(`Errore lettura ${nomeSheet}: ${retry.status}`)
+    }
+    const retryData = await retry.json()
+    const risultato = parseSheetData(retryData)
+    sheetCache[nomeSheet] = { data: risultato, time: Date.now() }
+    return risultato
+  }
+
+  if (!res.ok) {
+    console.error(`Errore lettura ${nomeSheet}: ${res.status}`)
+    if (sheetCache[nomeSheet]) return sheetCache[nomeSheet].data
+    return []
+  }
+
+  const data = await res.json()
+  const risultato = parseSheetData(data)
+
+  // Salva in cache
+  sheetCache[nomeSheet] = { data: risultato, time: Date.now() }
+  return risultato
 }
 
 // ============================================================
@@ -52,6 +107,7 @@ export async function aggiungiRiga(nomeSheet, valori) {
     headers: authHeaders(),
     body: JSON.stringify({ values: [valori] })
   })
+  invalidaCache(nomeSheet)
   return res.json()
 }
 
@@ -64,6 +120,7 @@ export async function aggiornaRiga(nomeSheet, indiceRiga, valori) {
     headers: authHeaders(),
     body: JSON.stringify({ values: [valori] })
   })
+  invalidaCache(nomeSheet)
   return res.json()
 }
 
@@ -85,17 +142,21 @@ export async function getConfigurazione() {
     return configCache
   }
 
-  const righe = await leggiSheet(SHEETS.CONFIGURAZIONE)
-  const config = {}
-  righe.forEach(r => {
-    if (r.Parametro) {
-      config[r.Parametro] = r.Valore
-    }
-  })
-
-  configCache = config
-  configCacheTime = ora
-  return config
+  try {
+    const righe = await leggiSheet(SHEETS.CONFIGURAZIONE)
+    const config = {}
+    righe.forEach(r => {
+      if (r.Parametro) {
+        config[r.Parametro] = r.Valore
+      }
+    })
+    configCache = config
+    configCacheTime = ora
+    return config
+  } catch (e) {
+    console.error('Errore lettura configurazione:', e)
+    return configCache || {}
+  }
 }
 
 export async function aggiornaParametro(parametro, valore) {
