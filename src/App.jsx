@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
+import { GOOGLE_CONFIG } from './config/google'
 import Dashboard from './pages/Dashboard'
 import Atleti from './pages/Atleti'
 import Attrezzature from './pages/Attrezzature'
@@ -64,6 +65,23 @@ export default function App() {
     get stato() { return navStack[navStack.length - 1] },
     stack: navStack,
     navigaA: (tab, filtro) => { navigaAvanti({ tab, ...filtro }) }
+  }
+
+  if (!GOOGLE_CONFIG.SPREADSHEET_ID) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', background: 'var(--bg)', gap: '16px', textAlign: 'center' }}>
+        <div style={{ fontSize: '48px' }}>⚠️</div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '24px', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+          App non configurata
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '320px' }}>
+          Questa app non è stata ancora configurata. Contatta l'amministratore per ricevere il link corretto.
+        </p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+          Sviluppato da Mattia Prosperi — masterxpro@gmail.com
+        </p>
+      </div>
+    )
   }
 
   if (loading) return <div className="loading-center">Caricamento...</div>

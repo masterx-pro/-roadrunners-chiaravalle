@@ -1,4 +1,4 @@
-import { GOOGLE_CONFIG, SHEETS } from '../config/google'
+import { GOOGLE_CONFIG, SHEETS, getConfigDrive } from '../config/google'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const DRIVE_URL = 'https://www.googleapis.com/drive/v3'
@@ -534,9 +534,11 @@ export async function getStoricoPattinoById(idPattino) {
 // ============================================================
 
 export async function creaCartellaAtleta(atleta) {
+  if (!GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID) await getConfigDrive()
   const token = getToken()
   const nomeCartella = `${atleta.Nome}_${atleta.Cognome}_${atleta.ID_Atleta}`.replace(/\s+/g, '_')
   const parentId = GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID
+  if (!parentId) throw new Error('Drive Atleti non configurato')
 
   // Cerca se la cartella esiste già (per nome esatto o per ID atleta nel nome)
   try {
@@ -779,6 +781,8 @@ export async function toggleIscrizioneComunicata(idEvento) {
 // ============================================================
 
 export async function creaCartellaGara(evento) {
+  if (!GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID) await getConfigDrive()
+  if (!GOOGLE_CONFIG.DRIVE_ROOT_FOLDER_ID) throw new Error('Drive Root non configurato')
   const token = getToken()
 
   // Cerca o crea cartella "Gare" nella root
