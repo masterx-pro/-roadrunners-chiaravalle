@@ -2223,6 +2223,7 @@ function ChevronIcon() {
 function NoleggioNonPagati({ nav }) {
   const [pagamentiList, setPagamentiList] = useState([])
   const [loading, setLoading] = useState(true)
+  const [pagamentoSelezionato, setPagamentoSelezionato] = useState(null)
 
   useEffect(() => {
     async function carica() {
@@ -2234,18 +2235,25 @@ function NoleggioNonPagati({ nav }) {
     carica()
   }, [])
 
-  async function togglePagato(pag) {
-    const nuovoStato = pag.Stato === 'Pagato' ? 'Da pagare' : 'Pagato'
-    const dataPag = nuovoStato === 'Pagato' ? new Date().toISOString().split('T')[0] : ''
-    await aggiornaPagamento(pag.ID_Pagamento, { Stato: nuovoStato, Data_Pagamento: dataPag })
-    setPagamentiList(prev => prev.map(p =>
-      p.ID_Pagamento === pag.ID_Pagamento
-        ? { ...p, Stato: nuovoStato, Data_Pagamento: dataPag }
-        : p
-    ).filter(p => p.Stato !== 'Pagato'))
-  }
-
   if (loading) return <div className="loading-center">Caricamento...</div>
+
+  if (pagamentoSelezionato) {
+    return <DettaglioPagamentoNoleggio
+      pagamento={pagamentoSelezionato}
+      onBack={() => setPagamentoSelezionato(null)}
+      onSaved={(aggiornato) => {
+        if (aggiornato.Stato === 'Pagato') {
+          setPagamentiList(prev => prev.filter(p => p.ID_Pagamento !== aggiornato.ID_Pagamento))
+        } else {
+          setPagamentiList(prev => prev.map(p =>
+            p.ID_Pagamento === aggiornato.ID_Pagamento ? aggiornato : p
+          ))
+        }
+        setPagamentoSelezionato(null)
+      }}
+      nav={nav}
+    />
+  }
 
   return (
     <div>
@@ -2262,7 +2270,17 @@ function NoleggioNonPagati({ nav }) {
           </div>
         ) : (
           pagamentiList.map(p => (
-            <div key={p.ID_Pagamento} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+            <div
+              key={p.ID_Pagamento}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer'
+              }}
+              onClick={() => {
+                setPagamentoSelezionato(p)
+                nav.avanti({ tab: 'atleti', vista: 'dettaglio_pagamento' })
+              }}
+            >
               <div>
                 <div style={{ fontWeight: '600', fontSize: '14px' }}>{p.Nome_Atleta || p.ID_Atleta}</div>
                 <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
@@ -2272,17 +2290,169 @@ function NoleggioNonPagati({ nav }) {
                   Scad. {p.Data_Scadenza ? new Date(p.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
                 </div>
               </div>
-              <button
-                className="badge badge-warn"
-                style={{ cursor: 'pointer', border: 'none', fontSize: '13px' }}
-                onClick={() => togglePagato(p)}
-              >
-                Da pagare
-              </button>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '18px' }}>›</span>
             </div>
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+function DettaglioPagamentoNoleggio({ pagamento, onBack, onSaved, nav }) {
+  const [stato, setStato] = useState(pagamento.Stato || 'Da pagare')
+  const [dataPagamento, setDataPagamento] = useState(
+    pagamento.Data_Pagamento || new Date().toISOString().split('T')[0]
+  )
+  const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [docCaricato, setDocCaricato] = useState(false)
+  const [atletaData, setAtletaData] = useState(null)
+
+  useEffect(() => {
+    async function caricaDati() {
+      if (!pagamento.ID_Atleta) return
+      const atleti = await leggiSheet(SHEETS.ATLETI)
+      const atleta = atleti.find(a => a.ID_Atleta === pagamento.ID_Atleta)
+      setAtletaData(atleta)
+      if (!atleta?.Drive_Folder_ID) return
+
+      try {
+        const files = await listaDocumentiAtleta(atleta.Drive_Folder_ID)
+        const nomi = files.map(f => f.name?.toLowerCase() || '')
+        setDocCaricato(nomi.some(n => n.includes('ricevuta') && n.includes('noleggio')))
+      } catch (e) {}
+    }
+    caricaDati()
+  }, [pagamento.ID_Atleta])
+
+  async function handleSalva() {
+    setSaving(true)
+    try {
+      await aggiornaPagamento(pagamento.ID_Pagamento, {
+        Stato: stato,
+        Data_Pagamento: stato === 'Pagato' ? dataPagamento : ''
+      })
+      await scriviLog('Modifica', 'Pagamento', `${pagamento.Nome_Atleta || pagamento.ID_Atleta} - ${pagamento.Descrizione}`)
+      onSaved({ ...pagamento, Stato: stato, Data_Pagamento: stato === 'Pagato' ? dataPagamento : '' })
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante il salvataggio')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleUploadRicevuta(file) {
+    if (!file) return
+    setUploading(true)
+    try {
+      let folderId = atletaData?.Drive_Folder_ID
+      if (!folderId && atletaData) {
+        folderId = await creaCartellaAtleta(atletaData)
+        await aggiornaAtletaSicuro(atletaData.ID_Atleta, { Drive_Folder_ID: folderId })
+        setAtletaData(prev => ({ ...prev, Drive_Folder_ID: folderId }))
+      }
+      if (!folderId) throw new Error('Cartella Drive non trovata')
+
+      const fileFinale = await comprimiImmagine(file)
+      const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
+      const nomeAtleta = (pagamento.Nome_Atleta || pagamento.ID_Atleta).replace(/\s+/g, '_')
+      const descrizione = (pagamento.Descrizione || 'noleggio').replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ_-]/g, '_').replace(/\s+/g, '_')
+      const nomeFile = `${nomeAtleta}_ricevuta_noleggio_${descrizione}.${ext}`
+
+      await caricaDocumento(fileFinale, nomeFile, folderId)
+      setDocCaricato(true)
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante il caricamento')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={() => { onBack(); nav.indietro() }} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Pagamento</h1>
+      </div>
+
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700' }}>
+          {pagamento.Nome_Atleta || pagamento.ID_Atleta}
+        </div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginTop: '4px' }}>
+          {pagamento.Descrizione}
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: 'var(--accent)', marginTop: '8px' }}>
+          €{pagamento.Importo}
+        </div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+          Scadenza: {pagamento.Data_Scadenza ? new Date(pagamento.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
+        </div>
+      </div>
+
+      <div className="section-title">Stato</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <button
+            type="button"
+            className={`badge ${stato === 'Da pagare' ? 'badge-warn' : 'badge-muted'}`}
+            style={{ cursor: 'pointer', padding: '10px 20px', fontSize: '15px', border: 'none', flex: 1, justifyContent: 'center' }}
+            onClick={() => setStato('Da pagare')}
+          >
+            Da pagare
+          </button>
+          <button
+            type="button"
+            className={`badge ${stato === 'Pagato' ? 'badge-ok' : 'badge-muted'}`}
+            style={{ cursor: 'pointer', padding: '10px 20px', fontSize: '15px', border: 'none', flex: 1, justifyContent: 'center' }}
+            onClick={() => setStato('Pagato')}
+          >
+            Pagato ✓
+          </button>
+        </div>
+
+        {stato === 'Pagato' && (
+          <div className="form-group">
+            <label className="form-label">Data pagamento</label>
+            <input
+              className="form-input"
+              type="date"
+              value={dataPagamento}
+              onChange={e => setDataPagamento(e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="section-title">Ricevuta</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          onChange={(e) => handleUploadRicevuta(e.target.files[0])}
+          style={{ display: 'none' }}
+          id="upload-ricevuta-noleggio"
+        />
+        <label
+          htmlFor="upload-ricevuta-noleggio"
+          className="btn btn-ghost"
+          style={{
+            fontSize: '13px', cursor: 'pointer', width: '100%', justifyContent: 'center',
+            color: docCaricato ? 'var(--accent-ok)' : 'var(--text-secondary)',
+            borderColor: docCaricato ? 'rgba(16,185,129,0.3)' : 'var(--border)'
+          }}
+        >
+          {uploading ? 'Caricamento...' : docCaricato ? '✅ Ricevuta caricata (tap per sostituire)' : '📎 Carica ricevuta (foto o file)'}
+        </label>
+      </div>
+
+      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginBottom: '24px' }}>
+        {saving ? 'Salvataggio...' : 'Salva'}
+      </button>
     </div>
   )
 }
