@@ -1001,8 +1001,16 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
 
   const pattiniAtleta = pattini.filter(p => p.ID_Atleta === atleta.ID_Atleta)
   const [pagamentiAtleta, setPagamentiAtleta] = useState([])
+  const [storicoPattini, setStoricoPattini] = useState([])
   useEffect(() => {
     getPagamentiAtleta(atleta.ID_Atleta).then(p => setPagamentiAtleta(p))
+    leggiSheet(SHEETS.STORICO_PATTINI).then(storico => {
+      setStoricoPattini(
+        storico
+          .filter(s => s.ID_Atleta === atleta.ID_Atleta && s.Data_Fine)
+          .sort((a, b) => new Date(b.Data_Fine) - new Date(a.Data_Fine))
+      )
+    }).catch(() => {})
   }, [atleta.ID_Atleta])
   const statoCert = statoScadenza(atleta.Scad_Certificato)
   const statoFISR = statoScadenza(atleta.Scad_FISR)
@@ -1188,18 +1196,21 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
       </div>
 
       {/* PATTINI */}
-      {pattiniAtleta.length > 0 && (
+      {(pattiniAtleta.length > 0 || storicoPattini.length > 0) && (
         <>
           <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span>Pattini in noleggio</span>
-            <span style={{ fontSize: '14px' }}>✏️</span>
+            {pattiniAtleta.length > 0 && <span style={{ fontSize: '14px' }}>✏️</span>}
           </div>
-          <div className="card" onClick={() => navigaSottoVista('noleggio')} style={{ cursor: 'pointer' }}>
-            {pattiniAtleta.map(p => (
-              <div key={p.ID_Pattino} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+          <div className="card" onClick={() => pattiniAtleta.length > 0 ? navigaSottoVista('noleggio') : null} style={{ cursor: pattiniAtleta.length > 0 ? 'pointer' : 'default' }}>
+            {/* Pattino attuale */}
+            {pattiniAtleta.length > 0 ? pattiniAtleta.map(p => (
+              <div key={p.ID_Pattino} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: storicoPattini.length > 0 ? '1px solid var(--border)' : 'none' }}>
                 <div>
                   <div style={{ fontWeight: '600' }}>{p.Marca || p.ID_Pattino} — Taglia {p.Taglia}</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Dal {formattaData(p.Data_Inizio_Noleggio)}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    Dal {p.Data_Inizio_Noleggio ? new Date(p.Data_Inizio_Noleggio).toLocaleDateString('it-IT') : '—'} → in corso
+                  </div>
                 </div>
                 {(() => {
                   const nonPagati = pagamentiAtleta.filter(pg => pg.Tipo === 'Noleggio' && pg.Stato !== 'Pagato')
@@ -1210,6 +1221,23 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
                     </span>
                   )
                 })()}
+              </div>
+            )) : (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px', padding: '10px 0', borderBottom: storicoPattini.length > 0 ? '1px solid var(--border)' : 'none' }}>
+                Nessun pattino assegnato
+              </div>
+            )}
+
+            {/* Storico pattini restituiti */}
+            {storicoPattini.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < storicoPattini.length - 1 ? '1px solid var(--border)' : 'none', opacity: 0.7 }}>
+                <div>
+                  <div style={{ fontWeight: '500', fontSize: '14px' }}>{s.Marca} — Taglia {s.Taglia}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    Dal {new Date(s.Data_Inizio).toLocaleDateString('it-IT')} → {new Date(s.Data_Fine).toLocaleDateString('it-IT')}
+                  </div>
+                </div>
+                <span className="badge badge-muted" style={{ fontSize: '11px' }}>Restituito</span>
               </div>
             ))}
           </div>
