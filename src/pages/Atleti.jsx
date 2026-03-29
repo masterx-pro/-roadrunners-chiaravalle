@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet } from '../utils/sheetsApi'
 import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -1474,34 +1474,36 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
   const [dataPrimoNoleggio, setDataPrimoNoleggio] = useState(null)
   const [loadingStorico, setLoadingStorico] = useState(true)
   const [mostraSostituzione, setMostraSostituzione] = useState(false)
+  const [pagamentiNoleggio, setPagamentiNoleggio] = useState([])
 
-  // Carica storico e primo noleggio
+  // Carica storico, primo noleggio e pagamenti
   useEffect(() => {
-    async function caricaStorico() {
+    async function caricaDati() {
       try {
-        const { getDataPrimoNoleggio, leggiSheet } = await import('../utils/sheetsApi.js')
-        const { SHEETS } = await import('../config/google.js')
-
         const primaData = await getDataPrimoNoleggio(atleta.ID_Atleta)
         setDataPrimoNoleggio(primaData)
 
         const tuttoStorico = await leggiSheet(SHEETS.STORICO_PATTINI)
-        const annoStagione = new Date().getMonth() >= 9 ? new Date().getFullYear() : new Date().getFullYear() - 1
+        const annoStagione = calcolaAnnoInizioStagione()
         const inizioStagione = new Date(`${annoStagione}-10-01`)
 
         const storicoStagione = tuttoStorico
           .filter(s => s.ID_Atleta === atleta.ID_Atleta)
           .filter(s => new Date(s.Data_Inizio) >= inizioStagione)
           .sort((a, b) => new Date(a.Data_Inizio) - new Date(b.Data_Inizio))
-
         setStorico(storicoStagione)
+
+        // Pagamenti noleggio dal foglio Pagamenti
+        const tuttiPagamenti = await getPagamentiAtleta(atleta.ID_Atleta)
+        const soloNoleggio = tuttiPagamenti.filter(p => p.Tipo === 'Noleggio')
+        setPagamentiNoleggio(soloNoleggio)
       } catch (e) {
         console.error(e)
       } finally {
         setLoadingStorico(false)
       }
     }
-    caricaStorico()
+    caricaDati()
   }, [atleta.ID_Atleta])
 
   // Calcola mesi dalla data del primo noleggio (non dal pattino attuale)
@@ -1607,6 +1609,29 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
         </>
       )}
 
+      {/* Pagamenti noleggio */}
+      <div className="section-title">Pagamenti noleggio</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        {pagamentiNoleggio.length === 0 ? (
+          <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '12px', fontSize: '14px' }}>
+            Nessun pagamento noleggio generato
+          </div>
+        ) : (
+          pagamentiNoleggio.map(p => (
+            <PagamentoNoleggioRow
+              key={p.ID_Pagamento}
+              pagamento={p}
+              atleta={atleta}
+              onUpdate={(aggiornato) => {
+                setPagamentiNoleggio(prev => prev.map(pg =>
+                  pg.ID_Pagamento === aggiornato.ID_Pagamento ? aggiornato : pg
+                ))
+              }}
+            />
+          ))
+        )}
+      </div>
+
       {/* Bottoni azione */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
         <button className="btn btn-primary" onClick={handleSalvaData} disabled={saving} style={{ flex: 1 }}>
@@ -1711,6 +1736,89 @@ function SostituisciPattino({ atleta, pattinoAttuale, onDone, onAnnulla }) {
       <button className="btn btn-ghost btn-full" onClick={onAnnulla} style={{ marginTop: '12px' }}>
         Annulla
       </button>
+    </div>
+  )
+}
+
+// ============================================================
+// PAGAMENTO NOLEGGIO ROW (usata nel tab Noleggio)
+// ============================================================
+
+function PagamentoNoleggioRow({ pagamento, atleta, onUpdate }) {
+  const [uploading, setUploading] = useState(false)
+
+  async function togglePagato() {
+    const nuovoStato = pagamento.Stato === 'Pagato' ? 'Da pagare' : 'Pagato'
+    const dataPag = nuovoStato === 'Pagato' ? new Date().toISOString().split('T')[0] : ''
+    await aggiornaPagamento(pagamento.ID_Pagamento, {
+      Stato: nuovoStato,
+      Data_Pagamento: dataPag
+    })
+    onUpdate({ ...pagamento, Stato: nuovoStato, Data_Pagamento: dataPag })
+  }
+
+  async function handleUploadRicevuta(file) {
+    if (!file) return
+    setUploading(true)
+    try {
+      let folderId = atleta.Drive_Folder_ID
+      if (!folderId) {
+        folderId = await creaCartellaAtleta(atleta)
+        await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+        atleta.Drive_Folder_ID = folderId
+      }
+
+      const fileFinale = await comprimiImmagine(file)
+      const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
+      const descrizione = (pagamento.Descrizione || 'noleggio').replace(/[^a-zA-Z0-9àèéìòùÀÈÉÌÒÙ _-]/g, '_').replace(/\s+/g, '_')
+      const nomeFile = `${atleta.Nome}_${atleta.Cognome}_${descrizione}.${ext}`.replace(/\s+/g, '_')
+
+      await caricaDocumento(fileFinale, nomeFile, folderId)
+      alert('Ricevuta caricata ✓')
+    } catch (err) {
+      console.error(err)
+      alert('Errore durante il caricamento')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontWeight: '600', fontSize: '14px' }}>{pagamento.Descrizione}</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
+            €{pagamento.Importo} · Scad. {pagamento.Data_Scadenza ? new Date(pagamento.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
+            {pagamento.Data_Pagamento && ` · Pagato il ${new Date(pagamento.Data_Pagamento).toLocaleDateString('it-IT')}`}
+          </div>
+        </div>
+        <button
+          className={`badge ${pagamento.Stato === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}
+          style={{ cursor: 'pointer', border: 'none', fontSize: '13px' }}
+          onClick={togglePagato}
+        >
+          {pagamento.Stato === 'Pagato' ? 'Pagato ✓' : 'Da pagare'}
+        </button>
+      </div>
+
+      <div style={{ marginTop: '8px' }}>
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          onChange={(e) => handleUploadRicevuta(e.target.files[0])}
+          style={{ display: 'none' }}
+          id={`upload-nol-${pagamento.ID_Pagamento}`}
+        />
+        <label
+          htmlFor={`upload-nol-${pagamento.ID_Pagamento}`}
+          className="btn btn-ghost"
+          style={{ fontSize: '12px', cursor: uploading ? 'wait' : 'pointer', padding: '4px 8px' }}
+        >
+          {uploading ? 'Caricamento...' : '📎 Carica ricevuta'}
+        </label>
+      </div>
     </div>
   )
 }

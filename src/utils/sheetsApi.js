@@ -258,38 +258,76 @@ export async function aggiornaPattino(idx, pattino) {
 }
 
 export async function assegnaPattino(idPattino, idAtleta, dataInizio) {
-  const pattini = await getPattini()
+  const pattini = await leggiSheet(SHEETS.PATTINI)
   const idx = pattini.findIndex(p => p.ID_Pattino === idPattino)
   if (idx === -1) throw new Error('Pattino non trovato')
-  const p = pattini[idx]
+  const pattino = pattini[idx]
+  const oggi = dataInizio || new Date().toISOString().split('T')[0]
+
+  const atleti = await leggiSheet(SHEETS.ATLETI)
+  const atleta = atleti.find(a => a.ID_Atleta === idAtleta)
+  const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : idAtleta
+
   await aggiornaRiga(SHEETS.PATTINI, idx, [
-    p.ID_Pattino, p.Marca, p.Taglia, p.Stato,
-    idAtleta, dataInizio, 'Da pagare', p.Note
+    pattino.ID_Pattino, pattino.Marca, pattino.Taglia,
+    'Buono', idAtleta, oggi, 'Da pagare', pattino.Note || ''
   ])
-  await scriviLog('Assegnazione', 'Pattino', `${idPattino} a ${idAtleta}`)
+
+  // Crea riga storico aperta (senza Data_Fine)
+  await aggiungiRiga(SHEETS.STORICO_PATTINI, [
+    pattino.ID_Pattino, pattino.Marca, pattino.Taglia,
+    idAtleta, nomeAtleta,
+    oggi, ''
+  ])
+
+  await scriviLog('Assegnazione', 'Pattino', `${idPattino} a ${nomeAtleta}`)
 }
 
 export async function restituisciPattino(idPattino) {
-  const pattini = await getPattini()
+  const pattini = await leggiSheet(SHEETS.PATTINI)
   const idx = pattini.findIndex(p => p.ID_Pattino === idPattino)
   if (idx === -1) throw new Error('Pattino non trovato')
-  const p = pattini[idx]
+  const pattino = pattini[idx]
+  const oggi = new Date().toISOString().split('T')[0]
 
-  // Salva storico se era assegnato
-  if (p.ID_Atleta) {
-    const atleti = await getAtleti()
-    const atleta = atleti.find(a => a.ID_Atleta === p.ID_Atleta)
-    const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : p.ID_Atleta
-    await aggiungiRiga(SHEETS.STORICO_PATTINI, [
-      p.ID_Pattino, p.Marca || '', p.Taglia, p.ID_Atleta, nomeAtleta,
-      p.Data_Inizio_Noleggio, new Date().toISOString().split('T')[0]
-    ])
-    await scriviLog('Restituzione', 'Pattino', `${p.ID_Pattino} restituito da ${nomeAtleta}`)
+  if (pattino.ID_Atleta) {
+    // Cerca nello storico la riga aperta per questo pattino + atleta
+    const storico = await leggiSheet(SHEETS.STORICO_PATTINI)
+    const rigaAperta = storico.findIndex(s =>
+      s.ID_Pattino === idPattino &&
+      s.ID_Atleta === pattino.ID_Atleta &&
+      (!s.Data_Fine || s.Data_Fine.trim() === '')
+    )
+
+    if (rigaAperta !== -1) {
+      // Chiudi la riga storico esistente
+      const s = storico[rigaAperta]
+      await aggiornaRiga(SHEETS.STORICO_PATTINI, rigaAperta, [
+        s.ID_Pattino, s.Marca, s.Taglia, s.ID_Atleta, s.Nome_Atleta,
+        s.Data_Inizio, oggi
+      ])
+    } else {
+      // Fallback: crea riga con Data_Fine
+      const atleti = await leggiSheet(SHEETS.ATLETI)
+      const atleta = atleti.find(a => a.ID_Atleta === pattino.ID_Atleta)
+      const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : pattino.ID_Atleta
+      await aggiungiRiga(SHEETS.STORICO_PATTINI, [
+        pattino.ID_Pattino, pattino.Marca, pattino.Taglia,
+        pattino.ID_Atleta, nomeAtleta,
+        pattino.Data_Inizio_Noleggio || oggi, oggi
+      ])
+    }
+
+    const atleti = await leggiSheet(SHEETS.ATLETI)
+    const atleta = atleti.find(a => a.ID_Atleta === pattino.ID_Atleta)
+    const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : pattino.ID_Atleta
+    await scriviLog('Restituzione', 'Pattino', `${pattino.ID_Pattino} restituito da ${nomeAtleta}`)
   }
 
   // Libera il pattino
-  return aggiornaRiga(SHEETS.PATTINI, idx, [
-    p.ID_Pattino, p.Marca || '', p.Taglia, p.Stato, '', '', '', p.Note || ''
+  await aggiornaRiga(SHEETS.PATTINI, idx, [
+    pattino.ID_Pattino, pattino.Marca || '', pattino.Taglia,
+    'Buono', '', '', '', pattino.Note || ''
   ])
 }
 
