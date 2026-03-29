@@ -37,15 +37,25 @@ export default function Dashboard({ nav }) {
             localStorage.setItem('ultimo_trimestre', chiaveTrimestre)
           }
         }
-        // Genera pagamenti noleggio per il trimestre corrente (se mancanti)
-        try {
-          await generaPagamentiNoleggioTrimestre()
-        } catch (e) {
-          console.error('Errore generazione pagamenti noleggio:', e)
+
+        // Mostra subito la UI
+        setLoading(false)
+
+        // Genera pagamenti noleggio in background, solo una volta al giorno
+        const oggi = new Date().toISOString().split('T')[0]
+        const ultimoBatchDash = localStorage.getItem('ultimo_batch_dashboard')
+        if (ultimoBatchDash !== oggi) {
+          setTimeout(async () => {
+            try {
+              await generaPagamentiNoleggioTrimestre()
+              localStorage.setItem('ultimo_batch_dashboard', oggi)
+            } catch (err) {
+              console.error('Errore batch dashboard:', err)
+            }
+          }, 100)
         }
       } catch (err) {
         console.error(err)
-      } finally {
         setLoading(false)
       }
     }

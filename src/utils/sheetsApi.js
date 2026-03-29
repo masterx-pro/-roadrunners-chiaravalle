@@ -187,7 +187,7 @@ export async function aggiornaCategorieBatch(atleti, categorie) {
 
     if (idCategoriaAttuale !== idCategoriaCorretta || !nomeCategoriaAttuale) {
       try {
-        await aggiornaAtletaSicuro(atleta.ID_Atleta, {
+        await aggiornaAtletaBatch(atleti, atleta.ID_Atleta, {
           ID_Categoria: idCategoriaCorretta,
           Nome_Categoria: nomeCategoriaCorretto
         })
@@ -214,6 +214,14 @@ export async function aggiornaAtletaSicuro(idAtleta, overrides) {
   const atletaFresco = atletiSheet[idx]
   await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atletaFresco, overrides))
   return atletaFresco
+}
+
+// Versione per batch — riceve gli atleti già letti, evita letture extra
+export async function aggiornaAtletaBatch(atleti, idAtleta, overrides) {
+  const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
+  if (idx === -1) throw new Error('Atleta non trovato')
+  const valori = buildAtletaRow(atleti[idx], overrides)
+  await aggiornaRiga(SHEETS.ATLETI, idx, valori)
 }
 
 export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
@@ -464,7 +472,7 @@ export async function creaCartelleMancanti(atleti) {
     if (atleta.Drive_Folder_ID) continue
     try {
       const folderId = await creaCartellaAtleta(atleta)
-      await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+      await aggiornaAtletaBatch(atleti, atleta.ID_Atleta, { Drive_Folder_ID: folderId })
       atleta.Drive_Folder_ID = folderId
       creati++
     } catch (err) {

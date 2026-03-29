@@ -49,20 +49,33 @@ export default function Atleti({ nav }) {
 
   function ricarica() {
     setLoading(true)
-    Promise.all([getAtleti(), getPattini(), getCategorie()]).then(async ([a, p, c]) => {
-      try {
-        await aggiornaCategorieBatch(a, c)
-      } catch (err) {
-        console.error('Errore aggiornamento categorie:', err)
-      }
-      try {
-        await creaCartelleMancanti(a)
-      } catch (err) {
-        console.error('Errore creazione cartelle mancanti:', err)
-      }
+    Promise.all([getAtleti(), getPattini(), getCategorie()]).then(([a, p, c]) => {
+      // Mostra subito la lista — NON aspettare i batch
       setAtleti(a)
       setPattini(p)
       setCategorie(c)
+      setLoading(false)
+
+      // Batch in background, solo una volta al giorno
+      const oggi = new Date().toISOString().split('T')[0]
+      const ultimoBatch = localStorage.getItem('ultimo_batch_atleti')
+
+      if (ultimoBatch !== oggi) {
+        setTimeout(async () => {
+          try {
+            await aggiornaCategorieBatch(a, c)
+            await creaCartelleMancanti(a)
+            localStorage.setItem('ultimo_batch_atleti', oggi)
+            // Ricarica i dati aggiornati
+            const aggiornati = await getAtleti()
+            setAtleti(aggiornati)
+          } catch (err) {
+            console.error('Errore batch:', err)
+          }
+        }, 100)
+      }
+    }).catch(err => {
+      console.error(err)
       setLoading(false)
     })
   }
