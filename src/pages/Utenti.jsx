@@ -36,6 +36,31 @@ export default function Utenti() {
           </div>
         </button>
       </div>
+
+      {/* Card info app */}
+      <div style={{ marginTop: '32px', textAlign: 'center', padding: '20px' }}>
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>
+          Road Runners Gestionale
+        </div>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', opacity: 0.6, marginBottom: '12px' }}>
+          v1.1.0
+        </div>
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          Sviluppato da <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>Mattia Prosperi</span>
+        </div>
+        <a
+          href="mailto:masterxpro@gmail.com"
+          style={{
+            fontSize: '13px',
+            color: 'var(--accent)',
+            textDecoration: 'none',
+            fontFamily: 'var(--font-display)',
+            letterSpacing: '0.3px'
+          }}
+        >
+          masterxpro@gmail.com
+        </a>
+      </div>
     </div>
   )
 }

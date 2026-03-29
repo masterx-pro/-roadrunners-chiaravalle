@@ -69,6 +69,19 @@ export default function LoginPage({ onSignIn, errore }) {
         <GoogleIcon />
         Accedi con Google
       </button>
+
+      <div style={{
+        position: 'absolute',
+        bottom: '16px',
+        left: 0,
+        right: 0,
+        textAlign: 'center',
+        fontSize: '12px',
+        color: 'var(--text-secondary)',
+        opacity: 0.6
+      }}>
+        Sviluppato da <a href="mailto:masterxpro@gmail.com" style={{ color: 'var(--text-secondary)', textDecoration: 'none' }}>Mattia Prosperi</a>
+      </div>
     </div>
   )
 }
