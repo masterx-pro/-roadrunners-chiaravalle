@@ -60,13 +60,13 @@ export default function Dashboard({ nav }) {
           <div className="stat-value">{atletiAttivi.filter(a => a.Tipo_Atleta === 'Non agonista').length}</div>
           <div className="stat-label">🎿 Non agonisti</div>
         </div>
-        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { filtro: 'liberi' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: pattiniLiberi.length === 0 ? 'var(--accent)' : 'var(--accent-ok)' }}>
             {pattiniLiberi.length}
           </div>
           <div className="stat-label">Pattini liberi</div>
         </div>
-        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'noleggiati' })} style={{ cursor: 'pointer' }}>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { filtro: 'noleggiati' })} style={{ cursor: 'pointer' }}>
           <div className="stat-value" style={{ color: 'var(--text-secondary)' }}>{pattiniNoleggiati.length}</div>
           <div className="stat-label">In noleggio</div>
         </div>

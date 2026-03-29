@@ -7,10 +7,7 @@ import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
 const isAttivo = v => ['TRUE', 'true', 'True'].includes(v?.trim())
 
 export default function Attrezzature({ nav }) {
-  const [tab, setTab] = useState(() => {
-    const stato = nav.stato
-    return (stato.tab === 'attrezzature' && stato['tab']) || 'pattini'
-  })
+  const [tab, setTab] = useState('pattini')
 
   return (
     <div>
