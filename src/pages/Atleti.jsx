@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet } from '../utils/sheetsApi'
-import { SHEETS, PAGAMENTI_CONFIG } from '../config/google'
+import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione } from '../utils/sheetsApi'
+import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
 
@@ -50,30 +50,10 @@ export default function Atleti({ nav }) {
   function ricarica() {
     setLoading(true)
     Promise.all([getAtleti(), getPattini(), getCategorie()]).then(([a, p, c]) => {
-      // Mostra subito la lista — NON aspettare i batch
       setAtleti(a)
       setPattini(p)
       setCategorie(c)
       setLoading(false)
-
-      // Batch in background, solo una volta al giorno
-      const oggi = new Date().toISOString().split('T')[0]
-      const ultimoBatch = localStorage.getItem('ultimo_batch_atleti')
-
-      if (ultimoBatch !== oggi) {
-        setTimeout(async () => {
-          try {
-            await aggiornaCategorieBatch(a, c)
-            await creaCartelleMancanti(a)
-            localStorage.setItem('ultimo_batch_atleti', oggi)
-            // Ricarica i dati aggiornati
-            const aggiornati = await getAtleti()
-            setAtleti(aggiornati)
-          } catch (err) {
-            console.error('Errore batch:', err)
-          }
-        }, 100)
-      }
     }).catch(err => {
       console.error(err)
       setLoading(false)
@@ -269,6 +249,10 @@ export default function Atleti({ nav }) {
 // ============================================================
 
 function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, errore, mostraNoleggio = true }) {
+  const [config, setConfig] = useState({})
+  useEffect(() => { getConfigurazione().then(setConfig) }, [])
+  const quotaAnnuale = parseFloat(config.Quota_Annuale) || 300
+
   // Auto-preseleziona categoria per anno nascita
   useEffect(() => {
     if (form.dataNascita && form.sesso && form.tipoAtleta && categorie.length > 0) {
@@ -361,8 +345,8 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
       <div className="section-title">Quota associativa</div>
       <div className="card">
         <div className="form-group">
-          <label className="form-label">Importo quota (vuoto = {form.tipoAtleta === 'Non agonista' ? '€0 (accordo comunale)' : `standard €${PAGAMENTI_CONFIG.QUOTA_ANNUALE}`})</label>
-          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${form.tipoAtleta === 'Non agonista' ? '0' : PAGAMENTI_CONFIG.QUOTA_ANNUALE}`} />
+          <label className="form-label">Importo quota (vuoto = {form.tipoAtleta === 'Non agonista' ? '€0 (accordo comunale)' : `standard €${quotaAnnuale}`})</label>
+          <input className="form-input" type="number" value={form.quotaPersonalizzata} onChange={e => update('quotaPersonalizzata', e.target.value)} placeholder={`${form.tipoAtleta === 'Non agonista' ? '0' : quotaAnnuale}`} />
         </div>
         {titolo === 'Nuovo Atleta' && (
           <>
@@ -500,6 +484,8 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [successo, setSuccesso] = useState(false)
   const [errore, setErrore] = useState(null)
+  const [config, setConfig] = useState({})
+  const quotaAnnuale = parseFloat(config.Quota_Annuale) || 300
   const [form, setForm] = useState({
     nome: '', cognome: '', sesso: '', luogoNascita: '', dataNascita: '', codiceFiscale: '',
     idCategoria: '', genitoreNome: '', genitoreTelefono: '',
@@ -512,7 +498,10 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
     tipoAtleta: tipoVista || 'Agonista'
   })
 
-  useEffect(() => { getCategorie().then(setCategorie) }, [])
+  useEffect(() => {
+    getCategorie().then(setCategorie)
+    getConfigurazione().then(setConfig)
+  }, [])
 
   const update = (campo, valore) => setForm(prev => ({ ...prev, [campo]: valore }))
 
@@ -548,7 +537,7 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
       // Genera quote associative
       const importoQuota = form.quotaPersonalizzata
         ? parseFloat(form.quotaPersonalizzata)
-        : (form.tipoAtleta === 'Non agonista' ? 0 : PAGAMENTI_CONFIG.QUOTA_ANNUALE)
+        : (form.tipoAtleta === 'Non agonista' ? 0 : quotaAnnuale)
       const anno = new Date().getFullYear()
       const stagione = `${anno}/${anno + 1}`
       if (importoQuota > 0) {
@@ -1488,11 +1477,15 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
   const [loadingStorico, setLoadingStorico] = useState(true)
   const [mostraSostituzione, setMostraSostituzione] = useState(false)
   const [pagamentiNoleggio, setPagamentiNoleggio] = useState([])
+  const [costoMensile, setCostoMensile] = useState(15)
 
-  // Carica storico, primo noleggio e pagamenti
+  // Carica storico, primo noleggio, pagamenti e config
   useEffect(() => {
     async function caricaDati() {
       try {
+        const config = await getConfigurazione()
+        setCostoMensile(parseFloat(config.Costo_Noleggio_Mensile) || 15)
+
         const primaData = await getDataPrimoNoleggio(atleta.ID_Atleta)
         setDataPrimoNoleggio(primaData)
 
@@ -1528,7 +1521,6 @@ function GestioneNoleggio({ atleta, pattino, atleti, onBack, onSaved }) {
     return Math.max(1, mesi)
   })() : 0
 
-  const costoMensile = PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
   const totale = mesiNoleggio * costoMensile
 
   async function handleSalvaData() {

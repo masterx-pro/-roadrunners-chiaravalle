@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet, generaPagamentiNoleggioTrimestre } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData, trimestreCorrente, scadenzaTrimestreCorrente, pattiniDaPagare } from '../utils/dateUtils'
 
@@ -38,24 +38,9 @@ export default function Dashboard({ nav }) {
           }
         }
 
-        // Mostra subito la UI
-        setLoading(false)
-
-        // Genera pagamenti noleggio in background, solo una volta al giorno
-        const oggi = new Date().toISOString().split('T')[0]
-        const ultimoBatchDash = localStorage.getItem('ultimo_batch_dashboard')
-        if (ultimoBatchDash !== oggi) {
-          setTimeout(async () => {
-            try {
-              await generaPagamentiNoleggioTrimestre()
-              localStorage.setItem('ultimo_batch_dashboard', oggi)
-            } catch (err) {
-              console.error('Errore batch dashboard:', err)
-            }
-          }, 100)
-        }
       } catch (err) {
         console.error(err)
+      } finally {
         setLoading(false)
       }
     }

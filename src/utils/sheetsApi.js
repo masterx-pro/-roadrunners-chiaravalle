@@ -71,6 +71,58 @@ export async function aggiornaRiga(nomeSheet, indiceRiga, valori) {
 // ATLETI
 // ============================================================
 
+// ============================================================
+// CONFIGURAZIONE
+// ============================================================
+
+let configCache = null
+let configCacheTime = 0
+const CONFIG_CACHE_DURATA = 5 * 60 * 1000 // 5 minuti
+
+export async function getConfigurazione() {
+  const ora = Date.now()
+  if (configCache && (ora - configCacheTime) < CONFIG_CACHE_DURATA) {
+    return configCache
+  }
+
+  const righe = await leggiSheet(SHEETS.CONFIGURAZIONE)
+  const config = {}
+  righe.forEach(r => {
+    if (r.Parametro) {
+      config[r.Parametro] = r.Valore
+    }
+  })
+
+  configCache = config
+  configCacheTime = ora
+  return config
+}
+
+export async function aggiornaParametro(parametro, valore) {
+  const righe = await leggiSheet(SHEETS.CONFIGURAZIONE)
+  const idx = righe.findIndex(r => r.Parametro === parametro)
+  if (idx === -1) throw new Error(`Parametro "${parametro}" non trovato`)
+
+  await aggiornaRiga(SHEETS.CONFIGURAZIONE, idx, [
+    righe[idx].Parametro, String(valore), righe[idx].Descrizione || ''
+  ])
+
+  // Invalida la cache
+  configCache = null
+  configCacheTime = 0
+
+  await scriviLog('Modifica', 'Configurazione', `${parametro} = ${valore}`)
+}
+
+export async function getParametro(parametro, defaultValue) {
+  const config = await getConfigurazione()
+  return config[parametro] !== undefined ? config[parametro] : defaultValue
+}
+
+// ============================================================
+// ATLETI
+// ============================================================
+
 export async function getAtleti() {
   return leggiSheet(SHEETS.ATLETI)
 }
@@ -759,7 +811,9 @@ export async function aggiornaPagamento(idPagamento, updates) {
 }
 
 export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate) {
-  const { PAGAMENTI_CONFIG } = await import('../config/google.js')
+  const config = await getConfigurazione()
+  const scadRata1 = config.Scadenza_Rata_1 || '10'
+  const scadRata2 = config.Scadenza_Rata_2 || '01'
   const anno = new Date().getFullYear()
   const stagione = `${anno}/${anno + 1}`
 
@@ -771,7 +825,7 @@ export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate)
       descrizione: `Quota associativa ${stagione}`,
       importo: importo,
       stato: 'Da pagare',
-      dataScadenza: `${anno}-${PAGAMENTI_CONFIG.SCADENZA_RATA_1}-15`,
+      dataScadenza: `${anno}-${scadRata1}-15`,
     })
   } else {
     const metaImporto = Math.ceil(importo / 2)
@@ -782,7 +836,7 @@ export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate)
       descrizione: `Quota ${stagione} — Rata 1/2`,
       importo: metaImporto,
       stato: 'Da pagare',
-      dataScadenza: `${anno}-${PAGAMENTI_CONFIG.SCADENZA_RATA_1}-15`,
+      dataScadenza: `${anno}-${scadRata1}-15`,
     })
     await creaPagamento({
       idAtleta,
@@ -791,7 +845,7 @@ export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate)
       descrizione: `Quota ${stagione} — Rata 2/2`,
       importo: importo - metaImporto,
       stato: 'Da pagare',
-      dataScadenza: `${anno + 1}-${PAGAMENTI_CONFIG.SCADENZA_RATA_2}-15`,
+      dataScadenza: `${anno + 1}-${scadRata2}-15`,
     })
   }
   await scriviLog('Quote generate', 'Atleta', nomeAtleta)
@@ -845,9 +899,10 @@ export async function generaPagamentoNoleggio(idAtleta, nomeAtleta, pattino) {
   if (esistente) return // già generato
 
   // Calcola importo: mesi del trimestre × costo mensile
-  const { PAGAMENTI_CONFIG } = await import('../config/google.js')
+  const config = await getConfigurazione()
+  const costoMensile = parseFloat(config.Costo_Noleggio_Mensile) || 15
   const mesiTrimestre = trimestre.mesi.length
-  const importo = mesiTrimestre * PAGAMENTI_CONFIG.COSTO_NOLEGGIO_MENSILE
+  const importo = mesiTrimestre * costoMensile
 
   // Scadenza: ultimo giorno del trimestre
   const ultimoMese = Math.max(...trimestre.mesi)

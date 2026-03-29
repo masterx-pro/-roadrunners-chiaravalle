@@ -42,7 +42,8 @@ export const SHEETS = {
   UTENTI:          'Utenti',
   LOG:             'Log',
   STORICO_PATTINI: 'Storico_Pattini',
-  PAGAMENTI:       'Pagamenti'
+  PAGAMENTI:       'Pagamenti',
+  CONFIGURAZIONE:  'Configurazione'
 }
 
 // ============================================================
@@ -58,12 +59,4 @@ export const TRIMESTRI = [
 // Giorni prima della scadenza per mostrare alert
 export const ALERT_GIORNI_ANTICIPO = 30
 
-// ============================================================
-// CONFIGURAZIONE PAGAMENTI
-// ============================================================
-export const PAGAMENTI_CONFIG = {
-  QUOTA_ANNUALE: 300,           // importo standard — modificare ogni anno
-  COSTO_NOLEGGIO_MENSILE: 15,   // €/mese per noleggio pattini
-  SCADENZA_RATA_1: '10',        // mese scadenza prima rata (ottobre)
-  SCADENZA_RATA_2: '01',        // mese scadenza seconda rata (gennaio)
-}
+// PAGAMENTI_CONFIG rimosso — i valori vengono dal foglio Configurazione
