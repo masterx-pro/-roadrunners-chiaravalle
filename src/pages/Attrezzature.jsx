@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById } from '../utils/sheetsApi'
+import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById, leggiSheet, aggiornaPagamento } from '../utils/sheetsApi'
 import { formattaData } from '../utils/dateUtils'
 import { SHEETS } from '../config/google'
 import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
@@ -44,6 +44,7 @@ export default function Attrezzature({ nav }) {
 function PattiniView({ nav }) {
   const [pattini, setPattini] = useState([])
   const [atleti, setAtleti] = useState([])
+  const [pagamenti, setPagamenti] = useState([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState(() => {
     const stato = nav.stato
@@ -68,9 +69,19 @@ function PattiniView({ nav }) {
 
   function ricarica() {
     setLoading(true)
-    Promise.all([getPattini(), getAtleti()]).then(([p, a]) => {
-      setPattini(p); setAtleti(a); setLoading(false)
+    Promise.all([getPattini(), getAtleti(), leggiSheet(SHEETS.PAGAMENTI)]).then(([p, a, pag]) => {
+      setPattini(p); setAtleti(a); setPagamenti(pag); setLoading(false)
     })
+  }
+
+  function getStatoPagamentoPattino(pattino) {
+    if (!pattino.ID_Atleta) return null
+    const pagNoleggio = pagamenti.filter(p =>
+      p.ID_Atleta === pattino.ID_Atleta &&
+      p.Tipo === 'Noleggio' &&
+      p.Stato !== 'Pagato'
+    )
+    return pagNoleggio.length > 0 ? 'Da pagare' : 'Pagato'
   }
 
   useEffect(() => { ricarica() }, [])
@@ -86,6 +97,7 @@ function PattiniView({ nav }) {
       pattino={selezionato}
       idx={selIdx}
       atleti={atleti}
+      pagamenti={pagamenti}
       onBack={() => nav.indietro()}
       onSaved={() => { setVista('lista'); setSelezionato(null); ricarica() }}
     />
@@ -100,7 +112,6 @@ function PattiniView({ nav }) {
     if (filtro === 'liberi') return !p.ID_Atleta && p.Stato !== 'Rotto'
     if (filtro === 'noleggiati') return !!p.ID_Atleta
     if (filtro === 'rotti') return p.Stato === 'Rotto'
-    if (filtro === 'da_pagare') return !!p.ID_Atleta && p.Stato_Pagamento !== 'Pagato'
     return true
   })
 
@@ -112,13 +123,12 @@ function PattiniView({ nav }) {
       </div>
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        {['tutti', 'liberi', 'noleggiati', 'da_pagare', 'rotti'].map(f => {
-          const labels = { tutti: 'Tutti', liberi: 'Liberi', noleggiati: 'Noleggiati', da_pagare: 'Da pagare', rotti: 'Rotti' }
+        {['tutti', 'liberi', 'noleggiati', 'rotti'].map(f => {
+          const labels = { tutti: 'Tutti', liberi: 'Liberi', noleggiati: 'Noleggiati', rotti: 'Rotti' }
           const counts = {
             tutti: pattini.length,
             liberi: pattini.filter(p => !p.ID_Atleta && p.Stato !== 'Rotto').length,
             noleggiati: pattini.filter(p => p.ID_Atleta).length,
-            da_pagare: pattini.filter(p => p.ID_Atleta && p.Stato_Pagamento !== 'Pagato').length,
             rotti: pattini.filter(p => p.Stato === 'Rotto').length
           }
           return (
@@ -158,9 +168,12 @@ function PattiniView({ nav }) {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                   <span className={`badge ${p.Stato === 'Rotto' ? 'badge-danger' : p.Stato === 'Usurato' ? 'badge-warn' : 'badge-ok'}`}>{p.Stato}</span>
-                  {p.ID_Atleta && (
-                    <span className={`badge ${p.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>{p.Stato_Pagamento}</span>
-                  )}
+                  {p.ID_Atleta && (() => {
+                    const statoPag = getStatoPagamentoPattino(p)
+                    return statoPag && (
+                      <span className={`badge ${statoPag === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>{statoPag}</span>
+                    )
+                  })()}
                 </div>
               </div>
             )
@@ -229,7 +242,7 @@ function NuovoPattino({ onBack, onSaved }) {
 // DETTAGLIO PATTINO
 // ============================================================
 
-function DettaglioPattino({ pattino, idx, atleti, onBack, onSaved }) {
+function DettaglioPattino({ pattino, idx, atleti, pagamenti, onBack, onSaved }) {
   const [modifica, setModifica] = useState(false)
   const [assegna, setAssegna] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -285,11 +298,29 @@ function DettaglioPattino({ pattino, idx, atleti, onBack, onSaved }) {
     } finally { setSaving(false) }
   }
 
+  function getStatoPagamentoPattino() {
+    if (!pattino.ID_Atleta) return null
+    const pagNoleggio = (pagamenti || []).filter(p =>
+      p.ID_Atleta === pattino.ID_Atleta &&
+      p.Tipo === 'Noleggio' &&
+      p.Stato !== 'Pagato'
+    )
+    return pagNoleggio.length > 0 ? 'Da pagare' : 'Pagato'
+  }
+
   async function handleTogglePagamento() {
-    const nuovoStato = pattino.Stato_Pagamento === 'Pagato' ? 'Da pagare' : 'Pagato'
+    const pagNoleggio = (pagamenti || []).filter(p =>
+      p.ID_Atleta === pattino.ID_Atleta &&
+      p.Tipo === 'Noleggio' &&
+      p.Stato !== 'Pagato'
+    )
+    if (pagNoleggio.length === 0) return
     setSaving(true)
     try {
-      await aggiornaPattino(idx, { ...pattino, Stato_Pagamento: nuovoStato })
+      const oggi = new Date().toISOString().split('T')[0]
+      for (const pag of pagNoleggio) {
+        await aggiornaPagamento(pag.ID_Pagamento, { Stato: 'Pagato', Data_Pagamento: oggi })
+      }
       onSaved()
     } finally { setSaving(false) }
   }
@@ -359,17 +390,26 @@ function DettaglioPattino({ pattino, idx, atleti, onBack, onSaved }) {
               <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Dal</span>
               <span style={{ fontWeight: '500', fontSize: '14px' }}>{formattaData(pattino.Data_Inizio_Noleggio)}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Pagamento</span>
-              <button
-                className={`badge ${pattino.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}
-                style={{ cursor: 'pointer', border: 'none' }}
-                onClick={handleTogglePagamento}
-                disabled={saving}
-              >
-                {pattino.Stato_Pagamento} (tocca)
-              </button>
-            </div>
+            {(() => {
+              const statoPag = getStatoPagamentoPattino()
+              return statoPag && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Pagamento</span>
+                  {statoPag === 'Da pagare' ? (
+                    <button
+                      className="badge badge-warn"
+                      style={{ cursor: 'pointer', border: 'none' }}
+                      onClick={handleTogglePagamento}
+                      disabled={saving}
+                    >
+                      Da pagare (tocca)
+                    </button>
+                  ) : (
+                    <span className="badge badge-ok">Pagato</span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
           <button className="btn btn-ghost btn-full" onClick={handleRestituisci} disabled={saving} style={{ marginBottom: '16px' }}>
             {saving ? 'Restituzione...' : 'Restituisci pattino'}

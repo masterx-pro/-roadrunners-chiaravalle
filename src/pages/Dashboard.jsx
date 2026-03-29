@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getEventiSpeciali, resetPagamentiNoleggio, leggiSheet } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getEventiSpeciali, leggiSheet } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
-import { calcolaAlert, formattaData, trimestreCorrente, scadenzaTrimestreCorrente, pattiniDaPagare } from '../utils/dateUtils'
+import { calcolaAlert, formattaData } from '../utils/dateUtils'
 
 export default function Dashboard({ nav }) {
   const [atleti, setAtleti] = useState([])
@@ -9,9 +9,6 @@ export default function Dashboard({ nav }) {
   const [eventi, setEventi] = useState([])
   const [pagamenti, setPagamenti] = useState([])
   const [loading, setLoading] = useState(true)
-  const [mostraResetTrimestre, setMostraResetTrimestre] = useState(false)
-  const [resetInCorso, setResetInCorso] = useState(false)
-  const [trimestreNuovo, setTrimestreNuovo] = useState(null)
 
   useEffect(() => {
     async function carica() {
@@ -23,21 +20,6 @@ export default function Dashboard({ nav }) {
         setPattini(p)
         setEventi(e)
         setPagamenti(pag)
-
-        // Controlla cambio trimestre
-        const trim = trimestreCorrente()
-        if (trim) {
-          const anno = new Date().getFullYear()
-          const chiaveTrimestre = `${trim.id}-${anno}`
-          const ultimoTrimestre = localStorage.getItem('ultimo_trimestre')
-          if (ultimoTrimestre && ultimoTrimestre !== chiaveTrimestre) {
-            setTrimestreNuovo({ chiave: chiaveTrimestre, label: trim.label })
-            setMostraResetTrimestre(true)
-          } else if (!ultimoTrimestre) {
-            localStorage.setItem('ultimo_trimestre', chiaveTrimestre)
-          }
-        }
-
       } catch (err) {
         console.error(err)
       } finally {
@@ -47,36 +29,13 @@ export default function Dashboard({ nav }) {
     carica()
   }, [])
 
-  async function confermaReset() {
-    setResetInCorso(true)
-    try {
-      await resetPagamentiNoleggio(pattini)
-      localStorage.setItem('ultimo_trimestre', trimestreNuovo.chiave)
-      // Ricarica pattini aggiornati
-      const p = await getPattini()
-      setPattini(p)
-      setMostraResetTrimestre(false)
-    } catch (err) {
-      console.error('Errore reset:', err)
-    } finally {
-      setResetInCorso(false)
-    }
-  }
-
-  function annullaReset() {
-    localStorage.setItem('ultimo_trimestre', trimestreNuovo.chiave)
-    setMostraResetTrimestre(false)
-  }
-
   if (loading) return <div className="loading-center">Caricamento...</div>
 
   const atletiAttivi = atleti.filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
   const pattiniNoleggiati = pattini.filter(p => p.ID_Atleta)
   const pattiniLiberi = pattini.filter(p => !p.ID_Atleta && p.Stato !== 'Rotto')
   const alerts = calcolaAlert(atletiAttivi, pattini, eventi)
-  const daPagare = pattiniDaPagare(pattini)
-  const trimestre = trimestreCorrente()
-  const scadenzaTrimestre = scadenzaTrimestreCorrente()
+  const noleggiDaPagare = pagamenti.filter(p => p.Tipo === 'Noleggio' && p.Stato !== 'Pagato')
 
   // Prossimo evento
   const oggi = new Date()
@@ -90,30 +49,6 @@ export default function Dashboard({ nav }) {
         <h1 className="page-title">Dashboard</h1>
         <span style={{ fontSize: '24px' }}>🛼</span>
       </div>
-
-      {/* BANNER RESET TRIMESTRE */}
-      {mostraResetTrimestre && (
-        <div className="card" style={{ borderColor: 'rgba(245,158,11,0.5)', marginBottom: '16px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', marginBottom: '8px' }}>💰</div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
-            Nuovo trimestre
-          </div>
-          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '12px' }}>
-            {trimestreNuovo?.label}
-          </div>
-          <div style={{ color: 'var(--accent-warn)', fontSize: '14px', marginBottom: '16px' }}>
-            I pagamenti noleggio verranno azzerati a "Da pagare".
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn btn-ghost" onClick={annullaReset} disabled={resetInCorso} style={{ flex: 1 }}>
-              Annulla
-            </button>
-            <button className="btn btn-primary" onClick={confermaReset} disabled={resetInCorso} style={{ flex: 1 }}>
-              {resetInCorso ? 'Reset...' : 'Conferma reset'}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* STATS */}
       <div className="stats-grid">
@@ -135,9 +70,9 @@ export default function Dashboard({ nav }) {
           <div className="stat-value" style={{ color: 'var(--text-secondary)' }}>{pattiniNoleggiati.length}</div>
           <div className="stat-label">In noleggio</div>
         </div>
-        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { tab: 'pattini', filtro: 'da_pagare' })} style={{ cursor: 'pointer' }}>
-          <div className="stat-value" style={{ color: daPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
-            {daPagare.length}
+        <div className="stat-card" onClick={() => nav.navigaA('atleti', { filtro: 'noleggio_da_pagare' })} style={{ cursor: 'pointer' }}>
+          <div className="stat-value" style={{ color: noleggiDaPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
+            {noleggiDaPagare.length}
           </div>
           <div className="stat-label">Noleggio da riscuotere</div>
         </div>

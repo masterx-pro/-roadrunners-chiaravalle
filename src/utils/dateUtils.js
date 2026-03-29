@@ -50,10 +50,6 @@ export function scadenzaTrimestreCorrente() {
   return new Date(anno, ultimoMese, 0) // giorno 0 = ultimo del mese precedente
 }
 
-export function pattiniDaPagare(pattini) {
-  return pattini.filter(p => p.ID_Atleta && p.Stato_Pagamento === 'Da pagare')
-}
-
 // ============================================================
 // CALCOLO PRIMO PAGAMENTO NUOVO ATLETA
 // ============================================================

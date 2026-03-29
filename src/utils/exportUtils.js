@@ -99,8 +99,7 @@ export function esportaPattiniExcel(pattini, atleti) {
     'Taglia': p.Taglia,
     'Stato': p.Stato,
     'Atleta Assegnato': nomeAtleta(p.ID_Atleta),
-    'Dal': p.Data_Inizio_Noleggio || '',
-    'Pagamento': p.Stato_Pagamento || ''
+    'Dal': p.Data_Inizio_Noleggio || ''
   }))
   scaricaExcel(dati, Object.keys(dati[0] || {}), 'pattini_roadrunners.xlsx')
 }

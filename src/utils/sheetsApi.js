@@ -288,23 +288,9 @@ export async function getPattini() {
   return leggiSheet(SHEETS.PATTINI)
 }
 
-export async function resetPagamentiNoleggio(pattini) {
-  const promises = pattini
-    .map((p, idx) => {
-      if (!p.ID_Atleta) return null
-      return aggiornaRiga(SHEETS.PATTINI, idx, [
-        p.ID_Pattino, p.Marca, p.Taglia, p.Stato,
-        p.ID_Atleta, p.Data_Inizio_Noleggio, 'Da pagare', p.Note
-      ])
-    })
-    .filter(Boolean)
-  await Promise.all(promises)
-  await scriviLog('Reset', 'Pagamenti noleggio', 'Reset trimestrale')
-}
-
 export async function creaPattino(pattino) {
   const id = `P-${String(Date.now()).slice(-4)}`
-  await aggiungiRiga(SHEETS.PATTINI, [id, pattino.marca || '', pattino.taglia, pattino.stato || 'Buono', '', '', '', pattino.note || ''])
+  await aggiungiRiga(SHEETS.PATTINI, [id, pattino.marca || '', pattino.taglia, pattino.stato || 'Buono', '', '', pattino.note || ''])
   await scriviLog('Nuovo', 'Pattino', `${pattino.marca || ''} taglia ${pattino.taglia}`)
   return id
 }
@@ -313,7 +299,7 @@ export async function aggiornaPattino(idx, pattino) {
   return aggiornaRiga(SHEETS.PATTINI, idx, [
     pattino.ID_Pattino, pattino.Marca || '', pattino.Taglia, pattino.Stato,
     pattino.ID_Atleta || '', pattino.Data_Inizio_Noleggio || '',
-    pattino.Stato_Pagamento || '', pattino.Note || ''
+    pattino.Note || ''
   ])
 }
 
@@ -330,7 +316,7 @@ export async function assegnaPattino(idPattino, idAtleta, dataInizio) {
 
   await aggiornaRiga(SHEETS.PATTINI, idx, [
     pattino.ID_Pattino, pattino.Marca, pattino.Taglia,
-    'Buono', idAtleta, oggi, 'Da pagare', pattino.Note || ''
+    'Buono', idAtleta, oggi, pattino.Note || ''
   ])
 
   // Crea riga storico aperta (senza Data_Fine)
@@ -387,7 +373,7 @@ export async function restituisciPattino(idPattino) {
   // Libera il pattino
   await aggiornaRiga(SHEETS.PATTINI, idx, [
     pattino.ID_Pattino, pattino.Marca || '', pattino.Taglia,
-    'Buono', '', '', '', pattino.Note || ''
+    'Buono', '', '', pattino.Note || ''
   ])
 }
 

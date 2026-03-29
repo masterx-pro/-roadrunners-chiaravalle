@@ -39,11 +39,14 @@ export default function Atleti({ nav }) {
     }
   }, [nav.stato])
 
-  // Navigazione da Dashboard (tipoVista nel nav.stato iniziale)
+  // Navigazione da Dashboard (tipoVista o filtro nel nav.stato iniziale)
   useEffect(() => {
     const stato = nav.stato
     if (stato.tab === 'atleti' && stato.tipoVista) {
       setTipoVista(stato.tipoVista)
+    }
+    if (stato.tab === 'atleti' && stato.filtro === 'noleggio_da_pagare') {
+      setVista('noleggio_da_pagare')
     }
   }, [])
 
@@ -100,6 +103,10 @@ export default function Atleti({ nav }) {
         onDisattivato={() => { setAtletaSelezionato(null); setVista('lista'); ricarica() }}
       />
     )
+  }
+
+  if (vista === 'noleggio_da_pagare') {
+    return <NoleggioNonPagati nav={nav} />
   }
 
   // Landing page — scelta agonisti / non agonisti
@@ -993,6 +1000,10 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
   const PREFISSI_CATEGORIA = ['certificato_medico', 'tessera_fisr', 'liberatoria_privacy']
 
   const pattiniAtleta = pattini.filter(p => p.ID_Atleta === atleta.ID_Atleta)
+  const [pagamentiAtleta, setPagamentiAtleta] = useState([])
+  useEffect(() => {
+    getPagamentiAtleta(atleta.ID_Atleta).then(p => setPagamentiAtleta(p))
+  }, [atleta.ID_Atleta])
   const statoCert = statoScadenza(atleta.Scad_Certificato)
   const statoFISR = statoScadenza(atleta.Scad_FISR)
 
@@ -1186,9 +1197,15 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
                   <div style={{ fontWeight: '600' }}>{p.Marca || p.ID_Pattino} — Taglia {p.Taglia}</div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>Dal {formattaData(p.Data_Inizio_Noleggio)}</div>
                 </div>
-                <span className={`badge ${p.Stato_Pagamento === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
-                  {p.Stato_Pagamento}
-                </span>
+                {(() => {
+                  const nonPagati = pagamentiAtleta.filter(pg => pg.Tipo === 'Noleggio' && pg.Stato !== 'Pagato')
+                  const statoPag = nonPagati.length > 0 ? 'Da pagare' : 'Pagato'
+                  return (
+                    <span className={`badge ${statoPag === 'Pagato' ? 'badge-ok' : 'badge-warn'}`}>
+                      {statoPag}
+                    </span>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -2093,4 +2110,75 @@ function ChevronIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <polyline points="9 18 15 12 9 6"/>
   </svg>
+}
+
+// ============================================================
+// NOLEGGIO NON PAGATI (da Dashboard)
+// ============================================================
+
+function NoleggioNonPagati({ nav }) {
+  const [pagamentiList, setPagamentiList] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function carica() {
+      const tuttiPag = await leggiSheet(SHEETS.PAGAMENTI)
+      const noleggiNonPagati = tuttiPag.filter(p => p.Tipo === 'Noleggio' && p.Stato !== 'Pagato')
+      setPagamentiList(noleggiNonPagati)
+      setLoading(false)
+    }
+    carica()
+  }, [])
+
+  async function togglePagato(pag) {
+    const nuovoStato = pag.Stato === 'Pagato' ? 'Da pagare' : 'Pagato'
+    const dataPag = nuovoStato === 'Pagato' ? new Date().toISOString().split('T')[0] : ''
+    await aggiornaPagamento(pag.ID_Pagamento, { Stato: nuovoStato, Data_Pagamento: dataPag })
+    setPagamentiList(prev => prev.map(p =>
+      p.ID_Pagamento === pag.ID_Pagamento
+        ? { ...p, Stato: nuovoStato, Data_Pagamento: dataPag }
+        : p
+    ).filter(p => p.Stato !== 'Pagato'))
+  }
+
+  if (loading) return <div className="loading-center">Caricamento...</div>
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={() => nav.indietro()} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Noleggio da riscuotere</h1>
+      </div>
+
+      <div className="card">
+        {pagamentiList.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon">✅</div>
+            <div className="empty-state-text">Tutti i noleggi sono pagati</div>
+          </div>
+        ) : (
+          pagamentiList.map(p => (
+            <div key={p.ID_Pagamento} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight: '600', fontSize: '14px' }}>{p.Nome_Atleta || p.ID_Atleta}</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
+                  {p.Descrizione} · €{p.Importo}
+                </div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+                  Scad. {p.Data_Scadenza ? new Date(p.Data_Scadenza).toLocaleDateString('it-IT') : '—'}
+                </div>
+              </div>
+              <button
+                className="badge badge-warn"
+                style={{ cursor: 'pointer', border: 'none', fontSize: '13px' }}
+                onClick={() => togglePagato(p)}
+              >
+                Da pagare
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
 }
