@@ -86,6 +86,7 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
           tipo: 'certificato',
           atleta: `${a.Nome} ${a.Cognome}`,
           idAtleta: a.ID_Atleta,
+          telefono: a.Genitore_Telefono || '',
           stato,
           data: a.Scad_Certificato,
           giorni: giorniAllaScadenza(a.Scad_Certificato)
@@ -103,6 +104,7 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
           tipo: 'fisr',
           atleta: `${a.Nome} ${a.Cognome}`,
           idAtleta: a.ID_Atleta,
+          telefono: a.Genitore_Telefono || '',
           stato,
           data: a.Scad_FISR,
           giorni: giorniAllaScadenza(a.Scad_FISR)

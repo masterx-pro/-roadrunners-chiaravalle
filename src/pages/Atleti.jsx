@@ -39,7 +39,7 @@ export default function Atleti({ nav }) {
     }
   }, [nav.stato])
 
-  // Navigazione da Dashboard (tipoVista o filtro nel nav.stato iniziale)
+  // Navigazione da Dashboard (tipoVista, filtro, o atletaId nel nav.stato iniziale)
   useEffect(() => {
     const stato = nav.stato
     if (stato.tab === 'atleti' && stato.tipoVista) {
@@ -49,6 +49,23 @@ export default function Atleti({ nav }) {
       setVista('noleggio_da_pagare')
     }
   }, [])
+
+  // Navigazione diretta a scheda atleta (es. da Dashboard → scadenze)
+  const [initialSottoVista, setInitialSottoVista] = useState(null)
+  useEffect(() => {
+    const stato = nav.stato
+    if (!stato?.atletaId || atleti.length === 0) return
+    const atleta = atleti.find(a => a.ID_Atleta === stato.atletaId)
+    if (atleta) {
+      const tipo = atleta.Tipo_Atleta || 'Agonista'
+      setTipoVista(tipo)
+      setAtletaSelezionato(atleta)
+      setVista('scheda')
+      if (stato.sottoVista) {
+        setInitialSottoVista(stato.sottoVista)
+      }
+    }
+  }, [atleti, nav.stato])
 
   function ricarica() {
     setLoading(true)
@@ -98,6 +115,7 @@ export default function Atleti({ nav }) {
         atleti={atleti}
         pattini={pattini}
         nav={nav}
+        initialSottoVista={initialSottoVista}
         onBack={() => nav.indietro()}
         onModifica={() => navigaVista('modifica')}
         onDisattivato={() => { setAtletaSelezionato(null); setVista('lista'); ricarica() }}
@@ -963,7 +981,7 @@ async function comprimiImmagine(file, maxWidth = 1200, qualita = 0.7) {
 // SCHEDA ATLETA
 // ============================================================
 
-function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisattivato }) {
+function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack, onModifica, onDisattivato }) {
   const [documenti, setDocumenti] = useState([])
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [uploading, setUploading] = useState(null) // null o chiave identificativa
@@ -974,7 +992,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
   const [nuovoDocNome, setNuovoDocNome] = useState('')
   const [nuovoDocFile, setNuovoDocFile] = useState(null)
   const [eliminando, setEliminando] = useState(null)
-  const [sottoVista, setSottoVista] = useState(null) // 'scadenze' | 'noleggio' | 'pagamenti'
+  const [sottoVista, setSottoVista] = useState(initialSottoVista || null) // 'scadenze' | 'noleggio' | 'pagamenti'
 
   function navigaSottoVista(nuova) {
     if (nuova) {
@@ -1385,6 +1403,14 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, onBack, onModifica, onDisa
 // MODIFICA SCADENZE
 // ============================================================
 
+function generaLinkWhatsApp(telefono, messaggio) {
+  let numero = (telefono || '').replace(/[\s\-\+\(\)]/g, '')
+  if (numero.startsWith('0')) numero = '39' + numero.substring(1)
+  if (!numero.startsWith('39') && numero.length <= 10) numero = '39' + numero
+  const testoEncoded = encodeURIComponent(messaggio)
+  return `https://wa.me/${numero}?text=${testoEncoded}`
+}
+
 function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
   const [emissioneCert, setEmissioneCert] = useState(atleta.Emissione_Certificato || '')
   const [scadCert, setScadCert] = useState(atleta.Scad_Certificato || '')
@@ -1396,9 +1422,11 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
   const [storico, setStorico] = useState([])
   const [docCaricato, setDocCaricato] = useState({ certificato: false, fisr: false })
   const [refreshDocs, setRefreshDocs] = useState(0)
+  const [config, setConfig] = useState(null)
 
   useEffect(() => {
     getStoricoScadenze(atleta.ID_Atleta).then(setStorico)
+    getConfigurazione().then(setConfig)
 
     if (atleta.Drive_Folder_ID) {
       listaDocumentiAtleta(atleta.Drive_Folder_ID).then(files => {
@@ -1514,6 +1542,23 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           {uploading === 'certificato' ? 'Caricamento...' : docCaricato.certificato ? '✅ Certificato caricato (tap per sostituire)' : '📎 Carica certificato medico (foto o file)'}
         </label>
 
+        {atleta.Genitore_Telefono && (
+          <a
+            href={generaLinkWhatsApp(
+              atleta.Genitore_Telefono,
+              `Buongiorno, le ricordiamo che il certificato medico di ${atleta.Nome} ${atleta.Cognome} ${
+                scadCert ? `scade il ${new Date(scadCert).toLocaleDateString('it-IT')}` : 'non risulta presente'
+              }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
+            )}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-ghost"
+            style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
+          >
+            📱 Avvisa su WhatsApp
+          </a>
+        )}
+
         {storicoCert.length > 0 && (
           <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', marginBottom: '6px' }}>Storico</div>
@@ -1557,6 +1602,23 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
         }}>
           {uploading === 'fisr' ? 'Caricamento...' : docCaricato.fisr ? '✅ Tessera caricata (tap per sostituire)' : '📎 Carica tessera FISR (foto o file)'}
         </label>
+
+        {atleta.Genitore_Telefono && (
+          <a
+            href={generaLinkWhatsApp(
+              atleta.Genitore_Telefono,
+              `Buongiorno, le ricordiamo che la tessera FISR di ${atleta.Nome} ${atleta.Cognome} ${
+                scadFISR ? `scade il ${new Date(scadFISR).toLocaleDateString('it-IT')}` : 'non risulta presente'
+              }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
+            )}
+            target="_blank"
+            rel="noreferrer"
+            className="btn btn-ghost"
+            style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
+          >
+            📱 Avvisa su WhatsApp
+          </a>
+        )}
 
         {storicoFISR.length > 0 && (
           <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>

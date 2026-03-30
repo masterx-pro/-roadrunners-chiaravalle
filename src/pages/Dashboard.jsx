@@ -145,7 +145,9 @@ export default function Dashboard({ nav }) {
         <div className="card">
           <div className="section-title">⚠️ Scadenze prossime 90 giorni</div>
           {alerts.map((a, i) => (
-            <AlertRow key={i} alert={a} />
+            <AlertRow key={i} alert={a} onClick={(alert) => {
+              nav.navigaA('atleti', { atletaId: alert.idAtleta, sottoVista: 'scadenze' })
+            }} />
           ))}
         </div>
       ) : (
@@ -162,7 +164,7 @@ export default function Dashboard({ nav }) {
   )
 }
 
-function AlertRow({ alert }) {
+function AlertRow({ alert, onClick }) {
   const isScaduto = alert.stato === 'scaduto'
   const isUrgente = alert.stato === 'urgente'
   const isMancante = alert.stato === 'mancante'
@@ -175,7 +177,7 @@ function AlertRow({ alert }) {
   if (isMancante) { badgeClass = 'badge-danger'; testoGiorni = 'Mancante' }
 
   return (
-    <div className="atleta-row" style={{ cursor: 'default' }}>
+    <div className="atleta-row" style={{ cursor: 'pointer' }} onClick={() => onClick?.(alert)}>
       <div className="atleta-avatar">
         {alert.atleta.split(' ').map(p => p[0]).join('').slice(0, 2)}
       </div>
@@ -183,6 +185,23 @@ function AlertRow({ alert }) {
         <div className="atleta-nome">{alert.atleta}</div>
         <div className="atleta-sub">{label} {!isMancante && `— ${formattaData(alert.data)}`}</div>
       </div>
+      {alert.telefono && (
+        <a
+          href={`https://wa.me/39${alert.telefono.replace(/[\s\-\+\(\)]/g, '')}?text=${encodeURIComponent(
+            `Buongiorno, le ricordiamo che ${label.toLowerCase()} di ${alert.atleta} ${
+              alert.stato === 'mancante' ? 'non risulta presente' :
+              alert.stato === 'scaduto' ? 'risulta scaduto' :
+              `scade tra ${alert.giorni} giorni`
+            }. La preghiamo di provvedere.`
+          )}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{ fontSize: '18px', textDecoration: 'none', padding: '4px 8px', flexShrink: 0 }}
+        >
+          📱
+        </a>
+      )}
       <span className={`badge ${badgeClass}`}>{testoGiorni}</span>
     </div>
   )
