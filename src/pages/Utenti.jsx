@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getUtentiAutorizzati, aggiungiRiga, aggiornaRiga, scriviLog, getConfigurazione, aggiornaParametro, getAtleti, getCategorie, getPattini, aggiornaCategorieBatch, creaCartelleMancanti, generaPagamentiNoleggioTrimestre, condividiConUtente, rimuoviCondivisione, inviaEmailBenvenuto } from '../utils/sheetsApi'
+import { getUtentiAutorizzati, aggiungiRiga, aggiornaRiga, scriviLog, getConfigurazione, aggiornaParametro, getAtleti, getPattini, creaCartelleMancanti, generaPagamentiNoleggioTrimestre, condividiConUtente, rimuoviCondivisione, inviaEmailBenvenuto } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 
 export default function Utenti() {
@@ -369,14 +369,6 @@ function Manutenzione({ onBack }) {
     try {
       let messaggio = ''
 
-      if (tipo === 'categorie') {
-        const [atleti, categorie] = await Promise.all([getAtleti(), getCategorie()])
-        const aggiornati = await aggiornaCategorieBatch(atleti, categorie)
-        messaggio = aggiornati > 0
-          ? `${aggiornati} atleti aggiornati`
-          : 'Tutte le categorie sono corrette'
-      }
-
       if (tipo === 'cartelle') {
         const atleti = await getAtleti()
         const creati = await creaCartelleMancanti(atleti)
@@ -393,11 +385,10 @@ function Manutenzione({ onBack }) {
       }
 
       if (tipo === 'tutto') {
-        const [atleti, categorie] = await Promise.all([getAtleti(), getCategorie()])
-        const cat = await aggiornaCategorieBatch(atleti, categorie)
+        const atleti = await getAtleti()
         const cart = await creaCartelleMancanti(atleti)
         const pag = await generaPagamentiNoleggioTrimestre()
-        messaggio = `Completato — Categorie: ${cat}, Cartelle: ${cart}, Pagamenti: ${pag}`
+        messaggio = `Completato — Cartelle: ${cart}, Pagamenti: ${pag}`
       }
 
       const ora = new Date().toLocaleString('it-IT')
@@ -435,27 +426,12 @@ function Manutenzione({ onBack }) {
           {esecuzione === 'tutto' ? 'Esecuzione in corso...' : 'Esegui tutto'}
         </button>
         <div style={{ color: 'var(--text-secondary)', fontSize: '12px', textAlign: 'center' }}>
-          Aggiorna categorie + cartelle Drive + pagamenti noleggio
+          Cartelle Drive + pagamenti noleggio
         </div>
       </div>
 
       <div className="section-title">Operazioni singole</div>
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <div style={{ fontWeight: '600', fontSize: '14px' }}>Aggiorna categorie</div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '12px', marginTop: '2px' }}>Ricalcola per anno nascita e stagione</div>
-          </div>
-          <button
-            className="btn btn-ghost"
-            onClick={() => eseguiBatch('categorie')}
-            disabled={esecuzione !== null}
-            style={{ padding: '6px 12px', fontSize: '13px' }}
-          >
-            {esecuzione === 'categorie' ? '...' : 'Esegui'}
-          </button>
-        </div>
-
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div style={{ fontWeight: '600', fontSize: '14px' }}>Verifica cartelle Drive</div>

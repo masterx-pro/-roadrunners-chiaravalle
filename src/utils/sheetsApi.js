@@ -125,8 +125,255 @@ export async function aggiornaRiga(nomeSheet, indiceRiga, valori) {
 }
 
 // ============================================================
-// ATLETI
+// ATLETI — lettura FISR + Extra, scrittura solo su Extra
 // ============================================================
+
+function normalizzaDataFISR(dataStr) {
+  if (!dataStr || dataStr === '00/00/0000') return ''
+  if (/^\d{4}-\d{2}-\d{2}/.test(dataStr)) return dataStr.split(' ')[0]
+  const match = dataStr.match(/(\d{2})\/(\d{2})\/(\d{4})/)
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`
+  return dataStr
+}
+
+export async function leggiSheetFISR(nomeSheet) {
+  const ora = Date.now()
+  if (sheetCache[nomeSheet] && (ora - sheetCache[nomeSheet].time) < CACHE_DURATA) {
+    return sheetCache[nomeSheet].data
+  }
+
+  const url = `${BASE_URL}/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/${nomeSheet}`
+  const res = await fetch(url, { headers: authHeaders() })
+
+  if (res.status === 429) {
+    if (sheetCache[nomeSheet]) return sheetCache[nomeSheet].data
+    await new Promise(r => setTimeout(r, 2000))
+    const retry = await fetch(url, { headers: authHeaders() })
+    if (!retry.ok) return sheetCache[nomeSheet]?.data || []
+    const retryData = await retry.json()
+    const risultato = parseFISRData(retryData)
+    sheetCache[nomeSheet] = { data: risultato, time: Date.now() }
+    return risultato
+  }
+
+  if (!res.ok) {
+    console.error(`Errore lettura ${nomeSheet}: ${res.status}`)
+    if (sheetCache[nomeSheet]) return sheetCache[nomeSheet].data
+    return []
+  }
+
+  const data = await res.json()
+  const risultato = parseFISRData(data)
+  sheetCache[nomeSheet] = { data: risultato, time: Date.now() }
+  return risultato
+}
+
+function parseFISRData(data) {
+  const righe = data.values || []
+  if (righe.length < 2) return []
+  // Header alla riga 2 (indice 1), dati dalla riga 3 (indice 2+)
+  const intestazioni = righe[1].map(h => (h || '').toString().replace(/^\uFEFF/, '').trim())
+  return righe.slice(2).map(riga =>
+    Object.fromEntries(intestazioni.map((col, i) => [col, (riga[i] ?? '').toString().trim()]))
+  )
+}
+
+export async function getAtleti() {
+  // Leggi foglio FISR (header riga 2)
+  const atletiFISR = await leggiSheetFISR(SHEETS.ATLETI)
+
+  // Leggi foglio Extra
+  let atletiExtra = []
+  try {
+    atletiExtra = await leggiSheet(SHEETS.ATLETI_EXTRA)
+  } catch (e) {
+    console.warn('Foglio Atleti_Extra non trovato, continuo senza')
+  }
+
+  // Mappa Extra per Codice Fiscale
+  const extraMap = {}
+  atletiExtra.forEach(e => {
+    if (e.Codice_Fiscale) extraMap[e.Codice_Fiscale] = e
+  })
+
+  // Deduplica: per ogni CF, preferisci riga con Tipo Tessera = "Atleta"
+  const cfVisti = new Set()
+  const atletiUnici = []
+
+  // Prima passata: righe "Atleta"
+  atletiFISR.forEach(a => {
+    const cf = (a['Codice Fiscale'] || '').trim()
+    if (!cf || cfVisti.has(cf)) return
+    if ((a['Tipo Tessera'] || '').trim() === 'Atleta') {
+      cfVisti.add(cf)
+      atletiUnici.push(a)
+    }
+  })
+
+  // Seconda passata: righe rimaste
+  atletiFISR.forEach(a => {
+    const cf = (a['Codice Fiscale'] || '').trim()
+    if (!cf || cfVisti.has(cf)) return
+    cfVisti.add(cf)
+    atletiUnici.push(a)
+  })
+
+  // Unisci FISR + Extra e mappa ai nomi campo usati dall'app
+  return atletiUnici.map(a => {
+    const cf = (a['Codice Fiscale'] || '').trim()
+    const extra = extraMap[cf] || {}
+
+    const catFISR = (a['Categoria'] || '').trim().toLowerCase()
+    const isNonAgonista = catFISR.includes('primi passi') || catFISR.includes('amatori')
+
+    return {
+      ID_Atleta: cf,
+      Nome: a['Nome'] || '',
+      Cognome: a['Cognome'] || '',
+      Sesso: a['Sesso'] || '',
+      Data_Nascita: normalizzaDataFISR(a['Nato il']),
+      Codice_Fiscale: cf,
+      Luogo_Nascita: a['Comune Nascita'] || '',
+      Provincia_Nascita: a['Prov'] || '',
+      Comune_Residenza: a['Comune Res.'] || '',
+      Provincia_Residenza: a['Provincia Res.'] || '',
+      Regione_Residenza: a['Regione Res.'] || '',
+      Indirizzo_Residenza: a['Indirizzo Res'] || '',
+      CAP_Residenza: a['CAP Res.'] || '',
+      Telefono: a['telefono'] || '',
+      Cellulare: a['cell.'] || '',
+      Email: a['e-mail'] || '',
+      Matricola: a['Matricola'] || '',
+      Numero_FISR: a['Matricola'] || '',
+      Tipo_Tessera: a['Tipo Tessera'] || '',
+      Emissione_FISR: normalizzaDataFISR(a['Emessa il']),
+      Scad_FISR: normalizzaDataFISR(a['Scade il']),
+      Settore: a['Settore'] || '',
+      Disciplina: a['Disciplina\\Carica'] || a['Disciplina/Carica'] || '',
+      Nome_Categoria: a['Categoria'] || '',
+      Scad_Certificato: normalizzaDataFISR(a['Scadenza certificato']),
+
+      // Campi dal foglio Extra
+      Numero_Gara: extra.Numero_Gara || '',
+      Drive_Folder_ID: extra.Drive_Folder_ID || '',
+      Attivo: extra.Attivo || 'TRUE',
+      Data_Iscrizione: extra.Data_Iscrizione || '',
+      Note: extra.Note || '',
+      Quota_Personalizzata: extra.Quota_Personalizzata || '',
+      Tipo_Atleta: extra.Tipo_Atleta || (isNonAgonista ? 'Non agonista' : 'Agonista'),
+
+      // Contatti genitore — da Extra se disponibile, altrimenti da FISR
+      Genitore_Nome: extra.Genitore_Nome || '',
+      Genitore_Telefono: extra.Genitore_Telefono_Extra || a['cell.'] || a['telefono'] || '',
+      Genitore_Email: extra.Genitore_Email_Extra || a['e-mail'] || '',
+
+      _rigaFISR: atletiFISR.indexOf(a),
+      _cf: cf,
+    }
+  })
+}
+
+// Colonne Atleti_Extra:
+// Codice_Fiscale | Numero_Gara | Drive_Folder_ID | Attivo | Data_Iscrizione | Note | Quota_Personalizzata | Tipo_Atleta | Genitore_Nome | Genitore_Telefono_Extra | Genitore_Email_Extra
+
+function buildExtraRow(extra) {
+  return [
+    extra.Codice_Fiscale || '',
+    extra.Numero_Gara || '',
+    extra.Drive_Folder_ID || '',
+    extra.Attivo || 'TRUE',
+    extra.Data_Iscrizione || '',
+    extra.Note || '',
+    extra.Quota_Personalizzata || '',
+    extra.Tipo_Atleta || 'Agonista',
+    extra.Genitore_Nome || '',
+    extra.Genitore_Telefono_Extra || '',
+    extra.Genitore_Email_Extra || '',
+  ]
+}
+
+export async function aggiornaAtletaSicuro(codiceFiscale, overrides) {
+  let extraRows = []
+  try {
+    extraRows = await leggiSheet(SHEETS.ATLETI_EXTRA)
+  } catch (e) {}
+
+  const idx = extraRows.findIndex(e => e.Codice_Fiscale === codiceFiscale)
+
+  if (idx !== -1) {
+    const rigaFresca = extraRows[idx]
+    const merged = { ...rigaFresca, ...overrides }
+    await aggiornaRiga(SHEETS.ATLETI_EXTRA, idx, buildExtraRow(merged))
+  } else {
+    const nuova = { Codice_Fiscale: codiceFiscale, ...overrides }
+    await aggiungiRiga(SHEETS.ATLETI_EXTRA, buildExtraRow(nuova))
+  }
+
+  invalidaCache(SHEETS.ATLETI_EXTRA)
+}
+
+export async function importaFileFISR(fileExcel) {
+  const XLSX = await import('xlsx')
+  const data = await fileExcel.arrayBuffer()
+  const workbook = XLSX.read(data)
+  const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  const righe = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false })
+
+  if (righe.length < 3) throw new Error('File vuoto o formato non valido')
+
+  // Riga 1 = "Estrazione tesserati", Riga 2 = header, Riga 3+ = dati
+  const headers = righe[1]
+  const datiRighe = righe.slice(2).filter(r => r[0])
+
+  const valoriCompleti = [righe[0], headers, ...datiRighe]
+
+  const token = localStorage.getItem('gapi_token')
+
+  // Sovrascrivi il foglio Atleti con i dati FISR
+  await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${GOOGLE_CONFIG.SPREADSHEET_ID}/values/Atleti?valueInputOption=USER_ENTERED`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ range: 'Atleti', values: valoriCompleti })
+    }
+  )
+
+  invalidaCache(SHEETS.ATLETI)
+
+  // Crea righe Extra per atleti nuovi
+  let extraRows = []
+  try {
+    extraRows = await leggiSheet(SHEETS.ATLETI_EXTRA)
+  } catch (e) {}
+
+  const cfExtra = new Set(extraRows.map(e => e.Codice_Fiscale))
+  const idxCF = headers.indexOf('Codice Fiscale')
+  const idxCat = headers.indexOf('Categoria')
+
+  let nuovi = 0
+  for (const riga of datiRighe) {
+    const cf = (riga[idxCF] || '').trim()
+    if (!cf || cfExtra.has(cf)) continue
+
+    const cat = (riga[idxCat] || '').toLowerCase()
+    const isNonAgonista = cat.includes('primi passi') || cat.includes('amatori')
+
+    await aggiungiRiga(SHEETS.ATLETI_EXTRA, buildExtraRow({
+      Codice_Fiscale: cf,
+      Attivo: 'TRUE',
+      Tipo_Atleta: isNonAgonista ? 'Non agonista' : 'Agonista',
+      Data_Iscrizione: new Date().toISOString().split('T')[0],
+    }))
+    nuovi++
+  }
+
+  invalidaCache(SHEETS.ATLETI_EXTRA)
+
+  await scriviLog('Import', 'FISR', `${datiRighe.length} atleti importati, ${nuovi} nuovi`)
+
+  return { totale: datiRighe.length, nuovi }
+}
 
 // ============================================================
 // CONFIGURAZIONE
@@ -180,14 +427,6 @@ export async function getParametro(parametro, defaultValue) {
   return config[parametro] !== undefined ? config[parametro] : defaultValue
 }
 
-// ============================================================
-// ATLETI
-// ============================================================
-
-export async function getAtleti() {
-  return leggiSheet(SHEETS.ATLETI)
-}
-
 export async function getCategorie() {
   return leggiSheet(SHEETS.CATEGORIE)
 }
@@ -205,141 +444,10 @@ export async function getAtleta(id) {
   return atleti.find(a => a.ID_Atleta === id)
 }
 
-// NOTA: l'ordine colonne del foglio Atleti è:
-// ID_Atleta, Nome, Cognome, Sesso, Luogo_Nascita, Data_Nascita, Codice_Fiscale,
-// ID_Categoria, Genitore_Nome, Nome_Categoria, Genitore_Telefono, Genitore_Email,
-// Scad_Certificato, Scad_FISR, Numero_FISR, Drive_Folder_ID, Attivo, Data_Iscrizione,
-// Note, Numero_Gara, Quota_Personalizzata, Tipo_Atleta, Emissione_Certificato, Emissione_FISR
-
-export function buildAtletaRow(a, overrides = {}) {
-  const keys = ['ID_Atleta','Nome','Cognome','Sesso','Luogo_Nascita','Data_Nascita','Codice_Fiscale','ID_Categoria','Genitore_Nome','Nome_Categoria','Genitore_Telefono','Genitore_Email','Scad_Certificato','Scad_FISR','Numero_FISR','Drive_Folder_ID','Attivo','Data_Iscrizione','Note','Numero_Gara','Quota_Personalizzata','Tipo_Atleta','Emissione_Certificato','Emissione_FISR']
-
-  const base = [
-    a.ID_Atleta, a.Nome, a.Cognome, a.Sesso || '', a.Luogo_Nascita || '',
-    a.Data_Nascita || '', a.Codice_Fiscale || '', a.ID_Categoria || '',
-    a.Genitore_Nome || '', a.Nome_Categoria || '',
-    a.Genitore_Telefono || '', a.Genitore_Email || '',
-    a.Scad_Certificato || '', a.Scad_FISR || '', a.Numero_FISR || '',
-    a.Drive_Folder_ID || '', a.Attivo || 'TRUE', a.Data_Iscrizione || '',
-    a.Note || '', a.Numero_Gara || '', a.Quota_Personalizzata || '',
-    a.Tipo_Atleta || 'Agonista', a.Emissione_Certificato || '', a.Emissione_FISR || ''
-  ]
-
-  return base.map((v, i) => {
-    if (overrides[keys[i]] !== undefined) return overrides[keys[i]]
-    return v
-  })
-}
-
-export async function creaAtleta(atleta) {
-  const id = `ATL-${String(Date.now()).slice(-6)}`
-  const valori = [
-    id, atleta.nome, atleta.cognome, atleta.sesso || '', atleta.luogoNascita || '',
-    atleta.dataNascita, atleta.codiceFiscale || '', atleta.idCategoria || '',
-    atleta.genitoreNome || '', atleta.nomeCategoria || '',
-    atleta.genitoreTelefono || '', atleta.genitoreEmail || '',
-    atleta.scadCertificato || '', atleta.scadFISR || '', atleta.numeroFISR || '',
-    '', // Drive_Folder_ID
-    'TRUE', atleta.dataIscrizione || new Date().toISOString().split('T')[0],
-    atleta.note || '', atleta.numeroGara || '',
-    atleta.quotaPersonalizzata || '', atleta.tipoAtleta || 'Agonista',
-    atleta.emissioneCertificato || '', atleta.emissioneFISR || ''
-  ]
-  await aggiungiRiga(SHEETS.ATLETI, valori)
-  await scriviLog('Nuovo', 'Atleta', `${atleta.nome} ${atleta.cognome}`)
-  return id
-}
-
 export function calcolaAnnoInizioStagione() {
   const oggi = new Date()
   const mese = oggi.getMonth() + 1
   return mese >= 10 ? oggi.getFullYear() : oggi.getFullYear() - 1
-}
-
-export function trovaCategoriaPerNascita(annoNascita, sesso, tipoAtleta, categorie) {
-  const annoStagione = calcolaAnnoInizioStagione()
-
-  const categorieAttive = categorie.filter(c =>
-    ['TRUE', 'true', 'True'].includes(c.Attiva?.trim())
-  )
-
-  return categorieAttive.find(c => {
-    const catTipo = (c.Tipo || '').trim()
-    const catSesso = (c.Sesso || '').trim().toUpperCase()
-    const offsetDa = parseInt(c.Offset_Da) || 0
-    const offsetA = parseInt(c.Offset_A) || 99
-
-    if (catTipo !== tipoAtleta) return false
-    if (catSesso !== sesso.toUpperCase()) return false
-
-    const annoNascitaDa = annoStagione - offsetA
-    const annoNascitaA = annoStagione - offsetDa
-
-    return annoNascita >= annoNascitaDa && annoNascita <= annoNascitaA
-  })
-}
-
-export async function aggiornaCategorieBatch(atleti, categorie) {
-  let aggiornati = 0
-
-  for (let i = 0; i < atleti.length; i++) {
-    const atleta = atleti[i]
-    if (!atleta.Data_Nascita || !atleta.Sesso) continue
-    if (!['TRUE', 'true', 'True'].includes(atleta.Attivo?.trim())) continue
-
-    const nascita = new Date(atleta.Data_Nascita)
-    if (isNaN(nascita.getTime())) continue
-    const annoNascita = nascita.getFullYear()
-    const sesso = atleta.Sesso?.trim().toUpperCase()
-    const tipoAtleta = atleta.Tipo_Atleta || 'Agonista'
-
-    const categoriaCorretta = trovaCategoriaPerNascita(annoNascita, sesso, tipoAtleta, categorie)
-    if (!categoriaCorretta) continue
-
-    const idCategoriaCorretta = categoriaCorretta.ID_Categoria || ''
-    const nomeCategoriaCorretto = categoriaCorretta.Nome || ''
-    if (!idCategoriaCorretta) continue
-
-    const idCategoriaAttuale = (atleta.ID_Categoria || '').trim()
-    const nomeCategoriaAttuale = (atleta.Nome_Categoria || '').trim()
-
-    if (idCategoriaAttuale !== idCategoriaCorretta || !nomeCategoriaAttuale) {
-      try {
-        await aggiornaAtletaBatch(atleti, atleta.ID_Atleta, {
-          ID_Categoria: idCategoriaCorretta,
-          Nome_Categoria: nomeCategoriaCorretto
-        })
-        atleta.ID_Categoria = idCategoriaCorretta
-        atleta.Nome_Categoria = nomeCategoriaCorretto
-        aggiornati++
-      } catch (err) {
-        console.error('Errore aggiornamento categoria per', atleta.Nome, atleta.Cognome, err)
-      }
-    }
-  }
-
-  if (aggiornati > 0) {
-    const as = calcolaAnnoInizioStagione()
-    await scriviLog('Auto', 'Categorie', `${aggiornati} atleti aggiornati per stagione ${as}/${as + 1}`)
-  }
-  return aggiornati
-}
-
-export async function aggiornaAtletaSicuro(idAtleta, overrides) {
-  const atletiSheet = await leggiSheet(SHEETS.ATLETI)
-  const idx = atletiSheet.findIndex(a => a.ID_Atleta === idAtleta)
-  if (idx === -1) throw new Error('Atleta non trovato')
-  const atletaFresco = atletiSheet[idx]
-  await aggiornaRiga(SHEETS.ATLETI, idx, buildAtletaRow(atletaFresco, overrides))
-  return atletaFresco
-}
-
-// Versione per batch — riceve gli atleti già letti, evita letture extra
-export async function aggiornaAtletaBatch(atleti, idAtleta, overrides) {
-  const idx = atleti.findIndex(a => a.ID_Atleta === idAtleta)
-  if (idx === -1) throw new Error('Atleta non trovato')
-  const valori = buildAtletaRow(atleti[idx], overrides)
-  await aggiornaRiga(SHEETS.ATLETI, idx, valori)
 }
 
 export async function aggiornaNumeroGara(atleti, idAtleta, nuovoNumero) {
@@ -376,7 +484,7 @@ export async function assegnaPattino(idPattino, idAtleta, dataInizio) {
   const pattino = pattini[idx]
   const oggi = dataInizio || new Date().toISOString().split('T')[0]
 
-  const atleti = await leggiSheet(SHEETS.ATLETI)
+  const atleti = await getAtleti()
   const atleta = atleti.find(a => a.ID_Atleta === idAtleta)
   const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : idAtleta
 
@@ -420,7 +528,7 @@ export async function restituisciPattino(idPattino) {
       ])
     } else {
       // Fallback: crea riga con Data_Fine
-      const atleti = await leggiSheet(SHEETS.ATLETI)
+      const atleti = await getAtleti()
       const atleta = atleti.find(a => a.ID_Atleta === pattino.ID_Atleta)
       const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : pattino.ID_Atleta
       await aggiungiRiga(SHEETS.STORICO_PATTINI, [
@@ -430,7 +538,7 @@ export async function restituisciPattino(idPattino) {
       ])
     }
 
-    const atleti = await leggiSheet(SHEETS.ATLETI)
+    const atleti = await getAtleti()
     const atleta = atleti.find(a => a.ID_Atleta === pattino.ID_Atleta)
     const nomeAtleta = atleta ? `${atleta.Nome} ${atleta.Cognome}` : pattino.ID_Atleta
     await scriviLog('Restituzione', 'Pattino', `${pattino.ID_Pattino} restituito da ${nomeAtleta}`)
@@ -536,11 +644,12 @@ export async function getStoricoPattinoById(idPattino) {
 export async function creaCartellaAtleta(atleta) {
   if (!GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID) await getConfigDrive()
   const token = getToken()
-  const nomeCartella = `${atleta.Nome}_${atleta.Cognome}_${atleta.ID_Atleta}`.replace(/\s+/g, '_')
+  const cf = atleta.Codice_Fiscale || atleta.ID_Atleta || ''
+  const nomeCartella = `${atleta.Nome}_${atleta.Cognome}_${cf}`.replace(/\s+/g, '_')
   const parentId = GOOGLE_CONFIG.DRIVE_ATLETI_FOLDER_ID
   if (!parentId) throw new Error('Drive Atleti non configurato')
 
-  // Cerca se la cartella esiste già (per nome esatto o per ID atleta nel nome)
+  // Cerca se la cartella esiste già (per nome esatto o per CF/ID atleta nel nome)
   try {
     const searchRes = await fetch(
       `${DRIVE_URL}/files?q='${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
@@ -548,7 +657,7 @@ export async function creaCartellaAtleta(atleta) {
     )
     const searchData = await searchRes.json()
     const cartellaTrovata = (searchData.files || []).find(f =>
-      f.name === nomeCartella || f.name.includes(atleta.ID_Atleta)
+      f.name === nomeCartella || (cf && f.name.includes(cf))
     )
     if (cartellaTrovata) {
       return cartellaTrovata.id
@@ -578,7 +687,7 @@ export async function creaCartelleMancanti(atleti) {
     if (atleta.Drive_Folder_ID) continue
     try {
       const folderId = await creaCartellaAtleta(atleta)
-      await aggiornaAtletaBatch(atleti, atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+      await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Drive_Folder_ID: folderId })
       atleta.Drive_Folder_ID = folderId
       creati++
     } catch (err) {
@@ -980,7 +1089,7 @@ export async function generaPagamentoNoleggio(idAtleta, nomeAtleta, pattino) {
 
 export async function generaPagamentiNoleggioTrimestre() {
   const pattini = await leggiSheet(SHEETS.PATTINI)
-  const atleti = await leggiSheet(SHEETS.ATLETI)
+  const atleti = await getAtleti()
   const pattiniNoleggiati = pattini.filter(p => p.ID_Atleta)
 
   let generati = 0

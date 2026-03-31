@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, creaAtleta, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaCategorieBatch, trovaCategoriaPerNascita, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione, getStoricoScadenze, salvaStoricoScadenza } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione, getStoricoScadenze, salvaStoricoScadenza, importaFileFISR } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
@@ -138,6 +138,33 @@ export default function Atleti({ nav }) {
         <div className="page-header">
           <h1 className="page-title">Atleti</h1>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <label htmlFor="import-fisr" className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '13px', cursor: 'pointer' }}>
+              Import FISR
+            </label>
+            <input
+              type="file"
+              id="import-fisr"
+              accept=".xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={async (e) => {
+                const file = e.target.files[0]
+                if (!file) return
+                if (!confirm('Importare il file FISR? Il foglio Atleti verrà sovrascritto con i nuovi dati.')) { e.target.value = ''; return }
+                try {
+                  setLoading(true)
+                  const risultato = await importaFileFISR(file)
+                  alert(`Importati ${risultato.totale} atleti (${risultato.nuovi} nuovi)`)
+                  const a = await getAtleti()
+                  setAtleti(a)
+                } catch (err) {
+                  console.error(err)
+                  alert('Errore durante l\'importazione: ' + err.message)
+                } finally {
+                  setLoading(false)
+                  e.target.value = ''
+                }
+              }}
+            />
             <button className="btn btn-ghost" onClick={() => navigaVista('categorie')} style={{ padding: '6px 12px', fontSize: '13px' }}>Categorie</button>
             <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
           </div>
@@ -172,20 +199,26 @@ export default function Atleti({ nav }) {
     )
   }
 
-  const categorieAttive = categorie.filter(c => ['TRUE', 'true', 'True'].includes(c.Attiva?.trim()))
-
-  // Nomi categoria unici (senza sesso) per il filtro
-  const nomiCategoriaUnici = [...new Set(categorieAttive.filter(c => (c.Tipo || '').trim() === tipoVista).map(c => c.Nome?.replace(/ [MF]$/, '')))]
-
   const atletiFiltrati = atleti
     .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
     .filter(a => (a.Tipo_Atleta || 'Agonista') === tipoVista)
     .filter(a => filtroSesso === 'tutti' || a.Sesso === filtroSesso)
-    .filter(a => filtroCategoria === 'tutte' || a.Nome_Categoria === filtroCategoria || a.Nome_Categoria?.replace(/ [MF]$/, '') === filtroCategoria)
+    .filter(a => filtroCategoria === 'tutte' || a.Nome_Categoria === filtroCategoria || a.Nome_Categoria?.replace(/\s*[MF]$/i, '') === filtroCategoria)
     .filter(a => {
       const nome = `${a.Nome} ${a.Cognome}`.toLowerCase()
       return nome.includes(cerca.toLowerCase())
     })
+
+  // Categorie con atleti presenti (calcolate dagli atleti filtrati per tipo/sesso, prima del filtro categoria)
+  const atletiPerCategorie = atleti
+    .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
+    .filter(a => (a.Tipo_Atleta || 'Agonista') === tipoVista)
+    .filter(a => filtroSesso === 'tutti' || a.Sesso === filtroSesso)
+  const categorieConAtleti = [...new Set(
+    atletiPerCategorie
+      .map(a => (a.Nome_Categoria || '').trim())
+      .filter(Boolean)
+  )].sort()
 
   return (
     <div>
@@ -234,21 +267,21 @@ export default function Atleti({ nav }) {
         ))}
       </div>
 
-      {/* Filtro categorie */}
-      {categorieAttive.length > 0 && (
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', flexWrap: 'wrap' }}>
+      {/* Filtro categorie — solo quelle con atleti */}
+      {categorieConAtleti.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
           <button
-            className={`btn ${filtroCategoria === 'tutte' ? 'btn-primary' : 'btn-secondary'}`}
+            className={`badge ${filtroCategoria === 'tutte' ? 'badge-danger' : 'badge-muted'}`}
+            style={{ cursor: 'pointer', border: 'none', padding: '6px 12px' }}
             onClick={() => setFiltroCategoria('tutte')}
-            style={{ padding: '4px 10px', fontSize: '12px' }}
           >Tutte</button>
-          {nomiCategoriaUnici.map(nome => (
+          {categorieConAtleti.map(cat => (
             <button
-              key={nome}
-              className={`btn ${filtroCategoria === nome ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setFiltroCategoria(filtroCategoria === nome ? 'tutte' : nome)}
-              style={{ padding: '4px 10px', fontSize: '12px' }}
-            >{nome}</button>
+              key={cat}
+              className={`badge ${filtroCategoria === cat ? 'badge-danger' : 'badge-muted'}`}
+              style={{ cursor: 'pointer', border: 'none', padding: '6px 12px' }}
+              onClick={() => setFiltroCategoria(filtroCategoria === cat ? 'tutte' : cat)}
+            >{cat.replace(/\s*[MF]$/i, '').trim()}</button>
           ))}
         </div>
       )}
@@ -278,16 +311,6 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
   useEffect(() => { getConfigurazione().then(setConfig) }, [])
   const quotaAnnuale = parseFloat(config.Quota_Annuale) || 300
 
-  // Auto-preseleziona categoria per anno nascita
-  useEffect(() => {
-    if (form.dataNascita && form.sesso && form.tipoAtleta && categorie.length > 0) {
-      const annoNascita = new Date(form.dataNascita).getFullYear()
-      const cat = trovaCategoriaPerNascita(annoNascita, form.sesso, form.tipoAtleta, categorie)
-      if (cat) {
-        update('idCategoria', cat.ID_Categoria)
-      }
-    }
-  }, [form.dataNascita, form.sesso, form.tipoAtleta, categorie])
 
   return (
     <div>
@@ -535,17 +558,33 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
       setErrore('Nome, Cognome e Sesso sono obbligatori')
       return
     }
+    if (!form.codiceFiscale.trim()) {
+      setErrore('Il Codice Fiscale è obbligatorio (l\'atleta deve essere presente nel foglio FISR)')
+      return
+    }
     setSaving(true)
     setErrore(null)
     try {
-      const nomeCategoria = categorie.find(c => c.ID_Categoria === form.idCategoria)?.Nome || ''
-      const idAtleta = await creaAtleta({ ...form, nomeCategoria })
+      const cf = form.codiceFiscale.trim().toUpperCase()
 
-      // Crea cartella Drive e aggiorna riga atleta
+      // Crea/aggiorna riga in Atleti_Extra
+      await aggiornaAtletaSicuro(cf, {
+        Tipo_Atleta: form.tipoAtleta || 'Agonista',
+        Data_Iscrizione: form.dataIscrizione || new Date().toISOString().split('T')[0],
+        Note: form.note || '',
+        Numero_Gara: form.numeroGara || '',
+        Quota_Personalizzata: form.quotaPersonalizzata || '',
+        Genitore_Nome: form.genitoreNome || '',
+        Genitore_Telefono_Extra: form.genitoreTelefono || '',
+        Genitore_Email_Extra: form.genitoreEmail || '',
+        Attivo: 'TRUE',
+      })
+
+      // Crea cartella Drive
       try {
-        const driveFolderId = await creaCartellaAtleta({ Nome: form.nome, Cognome: form.cognome, ID_Atleta: idAtleta })
+        const driveFolderId = await creaCartellaAtleta({ Nome: form.nome, Cognome: form.cognome, Codice_Fiscale: cf, ID_Atleta: cf })
         if (driveFolderId) {
-          await aggiornaAtletaSicuro(idAtleta, { Drive_Folder_ID: driveFolderId })
+          await aggiornaAtletaSicuro(cf, { Drive_Folder_ID: driveFolderId })
         }
       } catch (err) {
         console.error('Errore creazione cartella Drive:', err)
@@ -555,7 +594,7 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
         const pattini = await getPattini()
         const libero = pattini.find(p => !p.ID_Atleta && p.Taglia === form.taglia && p.Stato !== 'Rotto')
         if (libero) {
-          await assegnaPattino(libero.ID_Pattino, idAtleta, form.dataIscrizione)
+          await assegnaPattino(libero.ID_Pattino, cf, form.dataIscrizione)
         }
       }
 
@@ -568,7 +607,7 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
       if (importoQuota > 0) {
         if (form.tipoRate === '1') {
           await creaPagamento({
-            idAtleta,
+            idAtleta: cf,
             nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota associativa ${stagione}`,
@@ -579,7 +618,7 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
         } else {
           const metaImporto = Math.ceil(importoQuota / 2)
           await creaPagamento({
-            idAtleta,
+            idAtleta: cf,
             nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota ${stagione} — Rata 1/2`,
@@ -588,7 +627,7 @@ function NuovoAtleta({ tipoVista, onBack, onSaved }) {
             dataScadenza: form.scadRata1,
           })
           await creaPagamento({
-            idAtleta,
+            idAtleta: cf,
             nomeAtleta: `${form.nome} ${form.cognome}`,
             tipo: 'Quota',
             descrizione: `Quota ${stagione} — Rata 2/2`,
@@ -664,14 +703,12 @@ function ModificaAtleta({ atleta, atleti, onBack, onSaved }) {
     setSaving(true)
     setErrore(null)
     try {
-      await aggiornaAtletaSicuro(atleta.ID_Atleta, {
-        Nome: form.nome, Cognome: form.cognome, Sesso: form.sesso,
-        Luogo_Nascita: form.luogoNascita, Data_Nascita: form.dataNascita,
-        Codice_Fiscale: form.codiceFiscale, ID_Categoria: form.idCategoria,
-        Genitore_Nome: form.genitoreNome, Nome_Categoria: atleta.Nome_Categoria || '',
-        Genitore_Telefono: form.genitoreTelefono, Genitore_Email: form.genitoreEmail,
-        Scad_Certificato: form.scadCertificato, Scad_FISR: form.scadFISR,
-        Numero_FISR: form.numeroFISR, Data_Iscrizione: form.dataIscrizione,
+      // Solo i campi gestionali vanno su Atleti_Extra (i dati anagrafici vengono dal foglio FISR)
+      await aggiornaAtletaSicuro(atleta.Codice_Fiscale, {
+        Genitore_Nome: form.genitoreNome,
+        Genitore_Telefono_Extra: form.genitoreTelefono,
+        Genitore_Email_Extra: form.genitoreEmail,
+        Data_Iscrizione: form.dataIscrizione,
         Note: form.note, Numero_Gara: form.numeroGara,
         Quota_Personalizzata: form.quotaPersonalizzata
       })
@@ -1049,7 +1086,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
       creaCartellaAtleta(atleta).then(async (newFolderId) => {
         if (newFolderId) {
           atleta.Drive_Folder_ID = newFolderId
-          await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: newFolderId })
+          await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Drive_Folder_ID: newFolderId })
           setFolderId(newFolderId)
         }
       }).catch(err => console.error('Errore creazione cartella:', err))
@@ -1377,7 +1414,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
             <button className="btn btn-primary" disabled={disattivando} onClick={async () => {
               setDisattivando(true)
               try {
-                await aggiornaAtletaSicuro(atleta.ID_Atleta, { Attivo: 'FALSE' })
+                await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Attivo: 'FALSE' })
                 await scriviLog('Disattivazione', 'Atleta', `${atleta.Nome} ${atleta.Cognome}`)
                 onDisattivato()
               } catch (err) {
@@ -1463,13 +1500,8 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
         )
       }
 
-      await aggiornaAtletaSicuro(atleta.ID_Atleta, {
-        Scad_Certificato: scadCert,
-        Scad_FISR: scadFISR,
-        Numero_FISR: numeroFISR,
-        Emissione_Certificato: emissioneCert,
-        Emissione_FISR: emissioneFISR,
-      })
+      // Le scadenze certificato/FISR vengono dal foglio FISR (non modificabili dall'app).
+      // Lo storico scadenze sopra tiene traccia dei cambiamenti.
       await scriviLog('Modifica', 'Scadenze', nomeAtleta)
       onSaved()
     } catch (err) {
@@ -1487,7 +1519,7 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
       if (!folderId) {
         folderId = await creaCartellaAtleta(atleta)
         atleta.Drive_Folder_ID = folderId
-        await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+        await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Drive_Folder_ID: folderId })
       }
       const fileFinale = await comprimiImmagine(file)
       const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
@@ -1952,7 +1984,7 @@ function PagamentoNoleggioRow({ pagamento, atleta, onUpdate }) {
       let folderId = atleta.Drive_Folder_ID
       if (!folderId) {
         folderId = await creaCartellaAtleta(atleta)
-        await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+        await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Drive_Folder_ID: folderId })
         atleta.Drive_Folder_ID = folderId
       }
 
@@ -2041,7 +2073,7 @@ function GestionePagamenti({ atleta, atleti, onBack, onSaved }) {
     if (!folderId) {
       folderId = await creaCartellaAtleta(atleta)
       atleta.Drive_Folder_ID = folderId
-      await aggiornaAtletaSicuro(atleta.ID_Atleta, { Drive_Folder_ID: folderId })
+      await aggiornaAtletaSicuro(atleta.Codice_Fiscale, { Drive_Folder_ID: folderId })
     }
     const fileFinale = await comprimiImmagine(file)
     const ext = fileFinale.type === 'image/jpeg' ? 'jpg' : (file.name.includes('.') ? file.name.split('.').pop() : 'pdf')
@@ -2374,7 +2406,7 @@ function DettaglioPagamentoNoleggio({ pagamento, onBack, onSaved, nav }) {
   useEffect(() => {
     async function caricaDati() {
       if (!pagamento.ID_Atleta) return
-      const atleti = await leggiSheet(SHEETS.ATLETI)
+      const atleti = await getAtleti()
       const atleta = atleti.find(a => a.ID_Atleta === pagamento.ID_Atleta)
       setAtletaData(atleta)
       if (!atleta?.Drive_Folder_ID) return
@@ -2412,7 +2444,7 @@ function DettaglioPagamentoNoleggio({ pagamento, onBack, onSaved, nav }) {
       let folderId = atletaData?.Drive_Folder_ID
       if (!folderId && atletaData) {
         folderId = await creaCartellaAtleta(atletaData)
-        await aggiornaAtletaSicuro(atletaData.ID_Atleta, { Drive_Folder_ID: folderId })
+        await aggiornaAtletaSicuro(atletaData.Codice_Fiscale, { Drive_Folder_ID: folderId })
         setAtletaData(prev => ({ ...prev, Drive_Folder_ID: folderId }))
       }
       if (!folderId) throw new Error('Cartella Drive non trovata')
