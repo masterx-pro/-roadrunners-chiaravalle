@@ -74,6 +74,7 @@ export function resetDriveConfig() {
 // ============================================================
 export const SHEETS = {
   ATLETI:          'Atleti',
+  ATLETI_EXTRA:    'Atleti_Extra',
   CATEGORIE:       'Categorie',
   PATTINI:         'Pattini',
   RUOTE:           'Ruote',
@@ -86,7 +87,8 @@ export const SHEETS = {
   STORICO_PATTINI: 'Storico_Pattini',
   PAGAMENTI:       'Pagamenti',
   CONFIGURAZIONE:  'Configurazione',
-  STORICO_SCADENZE: 'Storico_Scadenze'
+  STORICO_SCADENZE: 'Storico_Scadenze',
+  ASSEGNAZIONE_RUOTE: 'Assegnazione_Ruote'
 }
 
 // ============================================================

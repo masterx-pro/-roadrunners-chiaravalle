@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -522,7 +522,128 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
           )
         })}
       </div>
+
+      {/* RUOTE PER GARA */}
+      {iscritti.length > 0 && (
+        <AssegnaRuoteGara
+          gara={gara}
+          atletiIscritti={atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))}
+        />
+      )}
     </div>
+  )
+}
+
+// ============================================================
+// ASSEGNA RUOTE PER GARA
+// ============================================================
+
+function AssegnaRuoteGara({ gara, atletiIscritti }) {
+  const [aperto, setAperto] = useState(false)
+  const [ruote, setRuote] = useState([])
+  const [setSelezionato, setSetSelezionato] = useState(null)
+  const [quantitaPerAtleta, setQuantitaPerAtleta] = useState(4)
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  async function apriPannello() {
+    if (!aperto) {
+      setLoading(true)
+      const r = await getRuote()
+      const conDisp = await calcolaDisponibilitaRuote(r.filter(s => s.Stato !== 'Eliminato'))
+      setRuote(conDisp.filter(s => s.Quantita_Disponibile > 0))
+      setLoading(false)
+    }
+    setAperto(!aperto)
+  }
+
+  async function handleAssegnaTutti() {
+    if (!setSelezionato) return
+    const totaleNecessario = atletiIscritti.length * quantitaPerAtleta
+    if (totaleNecessario > setSelezionato.Quantita_Disponibile) {
+      alert(`Ruote insufficienti: servono ${totaleNecessario}, disponibili ${setSelezionato.Quantita_Disponibile}`)
+      return
+    }
+
+    setSaving(true)
+    try {
+      for (const atleta of atletiIscritti) {
+        await assegnaRuote(
+          setSelezionato.ID_Set,
+          atleta.Codice_Fiscale || atleta.ID_Atleta,
+          `${atleta.Nome} ${atleta.Cognome}`,
+          quantitaPerAtleta,
+          gara.Titolo || gara.Nome || '',
+          ''
+        )
+      }
+      alert(`${quantitaPerAtleta} ruote assegnate a ${atletiIscritti.length} atleti`)
+      setAperto(false)
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="section-title">Ruote per gara</div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        <button
+          className="btn btn-ghost btn-full"
+          onClick={apriPannello}
+          style={{ fontSize: '13px' }}
+        >
+          {aperto ? 'Chiudi' : 'Assegna ruote agli iscritti'}
+        </button>
+
+        {aperto && (
+          loading ? (
+            <div style={{ padding: '12px', color: 'var(--text-secondary)' }}>Caricamento ruote...</div>
+          ) : (
+            <div style={{ marginTop: '12px' }}>
+              <div className="form-group">
+                <label className="form-label">Set ruote</label>
+                <select className="form-input" onChange={e => {
+                  const s = ruote.find(r => r.ID_Set === e.target.value)
+                  setSetSelezionato(s || null)
+                }} value={setSelezionato?.ID_Set || ''}>
+                  <option value="">— Seleziona set —</option>
+                  {ruote.map(r => (
+                    <option key={r.ID_Set} value={r.ID_Set}>
+                      {r.Diametro_mm}mm {r.Durezza_A}A — {r.Quantita_Disponibile} disponibili
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Ruote per atleta</label>
+                <input className="form-input" type="number" min="1" max="8" value={quantitaPerAtleta} onChange={e => setQuantitaPerAtleta(parseInt(e.target.value) || 4)} />
+              </div>
+
+              {setSelezionato && (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+                  Totale necessario: {atletiIscritti.length} atleti × {quantitaPerAtleta} = {atletiIscritti.length * quantitaPerAtleta} ruote
+                  {atletiIscritti.length * quantitaPerAtleta > setSelezionato.Quantita_Disponibile && (
+                    <span style={{ color: 'var(--accent)', marginLeft: '8px' }}>Insufficienti!</span>
+                  )}
+                </div>
+              )}
+
+              <button
+                className="btn btn-primary btn-full"
+                onClick={handleAssegnaTutti}
+                disabled={saving || !setSelezionato || atletiIscritti.length * quantitaPerAtleta > (setSelezionato?.Quantita_Disponibile || 0)}
+              >
+                {saving ? 'Assegnazione...' : `Assegna a tutti gli iscritti (${atletiIscritti.length})`}
+              </button>
+            </div>
+          )
+        )}
+      </div>
+    </>
   )
 }
 

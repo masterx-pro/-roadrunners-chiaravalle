@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById, leggiSheet, aggiornaPagamento } from '../utils/sheetsApi'
+import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById, leggiSheet, aggiornaPagamento, calcolaDisponibilitaRuote, assegnaRuote } from '../utils/sheetsApi'
 import { formattaData } from '../utils/dateUtils'
 import { SHEETS } from '../config/google'
 import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
@@ -477,10 +477,12 @@ function DettaglioPattino({ pattino, idx, atleti, pagamenti, onBack, onSaved }) 
 
 function RuoteView({ nav }) {
   const [ruote, setRuote] = useState([])
+  const [ruoteConDisp, setRuoteConDisp] = useState([])
   const [loading, setLoading] = useState(true)
   const [vista, setVista] = useState('lista')
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
+  const [assegnaRuoteSet, setAssegnaRuoteSet] = useState(null)
 
   function navigaVista(nuovaVista) {
     nav.avanti({ tab: 'attrezzature', vista: nuovaVista })
@@ -492,12 +494,18 @@ function RuoteView({ nav }) {
     if (stato.tab === 'attrezzature' && !stato.vista) {
       setVista('lista')
       setSelezionato(null)
+      setAssegnaRuoteSet(null)
     }
   }, [nav.stato])
 
-  function ricarica() {
+  async function ricarica() {
     setLoading(true)
-    getRuote().then(r => { setRuote(r.filter(r => r.Stato !== 'Eliminato')); setLoading(false) })
+    const r = await getRuote()
+    const filtrate = r.filter(r => r.Stato !== 'Eliminato')
+    setRuote(filtrate)
+    const conDisp = await calcolaDisponibilitaRuote(filtrate)
+    setRuoteConDisp(conDisp)
+    setLoading(false)
   }
 
   useEffect(() => { ricarica() }, [])
@@ -525,31 +533,56 @@ function RuoteView({ nav }) {
       </div>
 
       <div className="card">
-        {ruote.length === 0 ? (
+        {ruoteConDisp.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">⚙️</div>
             <div className="empty-state-text">Magazzino vuoto</div>
           </div>
         ) : (
-          ruote.map((r, i) => {
-            const realIdx = i // since we filtered out Eliminato
+          ruoteConDisp.map((r, i) => {
+            const realIdx = i
             return (
-              <div key={r.ID_Set} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
-                onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}
-              >
-                <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0 }}>⚙️</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: '600', fontSize: '15px' }}>{r.Diametro_mm}mm · {r.Durezza_A}A</div>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    Quantità: {r.Quantita}{r.Note && ` · ${r.Note}`}
+              <div key={r.ID_Set} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0, cursor: 'pointer' }}
+                    onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}
+                  >⚙️</div>
+                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}>
+                    <div style={{ fontWeight: '600', fontSize: '15px' }}>{r.Diametro_mm}mm · {r.Durezza_A}A</div>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                      {r.Quantita_Disponibile}/{r.Quantita_Totale} disponibili
+                      {r.Quantita_Assegnata > 0 && ` · ${r.Quantita_Assegnata} assegnate`}
+                      {r.Note && ` · ${r.Note}`}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <span className={`badge ${r.Stato === 'Da sostituire' ? 'badge-danger' : r.Stato === 'Usurate' ? 'badge-warn' : r.Quantita_Disponibile > 0 ? 'badge-ok' : 'badge-danger'}`}>
+                      {r.Quantita_Disponibile > 0 ? `${r.Quantita_Disponibile} disp.` : 'Esaurite'}
+                    </span>
+                    {r.Quantita_Disponibile > 0 && (
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                        onClick={(e) => { e.stopPropagation(); setAssegnaRuoteSet(r) }}
+                      >
+                        Assegna
+                      </button>
+                    )}
                   </div>
                 </div>
-                <span className={`badge ${r.Stato === 'Da sostituire' ? 'badge-danger' : r.Stato === 'Usurate' ? 'badge-warn' : 'badge-ok'}`}>{r.Stato}</span>
               </div>
             )
           })
         )}
       </div>
+
+      {assegnaRuoteSet && (
+        <AssegnaRuotePanel
+          set={assegnaRuoteSet}
+          onDone={() => { setAssegnaRuoteSet(null); ricarica() }}
+          onAnnulla={() => setAssegnaRuoteSet(null)}
+        />
+      )}
     </>
   )
 }
@@ -691,6 +724,135 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
           Elimina set ruote
         </button>
       )}
+    </div>
+  )
+}
+
+// ============================================================
+// ASSEGNA RUOTE PANEL (riutilizzabile)
+// ============================================================
+
+function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnulla }) {
+  const [atleti, setAtleti] = useState([])
+  const [atletaSelezionato, setAtletaSelezionato] = useState('')
+  const [quantita, setQuantita] = useState(1)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [ricerca, setRicerca] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function carica() {
+      const a = atletiPreselezionati || await getAtleti()
+      const attivi = a.filter(at => at.Attivo === 'TRUE' || at.Attivo === 'true')
+      setAtleti(attivi)
+      setLoading(false)
+    }
+    carica()
+  }, [])
+
+  const atletiFiltrati = ricerca
+    ? atleti.filter(a =>
+        `${a.Nome} ${a.Cognome}`.toLowerCase().includes(ricerca.toLowerCase())
+      )
+    : atleti
+
+  async function handleAssegna() {
+    if (!atletaSelezionato || quantita < 1) return
+    setSaving(true)
+    try {
+      const atleta = atleti.find(a => a.Codice_Fiscale === atletaSelezionato)
+      if (!atleta) throw new Error('Atleta non trovato')
+
+      await assegnaRuote(
+        set.ID_Set,
+        atleta.Codice_Fiscale,
+        `${atleta.Nome} ${atleta.Cognome}`,
+        quantita,
+        evento || '',
+        note
+      )
+      onDone()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="loading-center">Caricamento...</div>
+
+  return (
+    <div className="card" style={{ marginTop: '16px' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+        Assegna ruote — {set.Diametro_mm}mm {set.Durezza_A}A
+      </div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+        Disponibili: {set.Quantita_Disponibile}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Atleta</label>
+        <input
+          className="form-input"
+          placeholder="Cerca atleta..."
+          value={ricerca}
+          onChange={e => setRicerca(e.target.value)}
+        />
+      </div>
+
+      <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '12px' }}>
+        {atletiFiltrati.slice(0, 20).map(a => (
+          <div
+            key={a.Codice_Fiscale}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px', borderBottom: '1px solid var(--border)',
+              cursor: 'pointer',
+              background: atletaSelezionato === a.Codice_Fiscale ? 'var(--accent-soft)' : 'transparent',
+              borderRadius: '4px'
+            }}
+            onClick={() => setAtletaSelezionato(a.Codice_Fiscale)}
+          >
+            <div className="atleta-avatar" style={{ width: '32px', height: '32px', fontSize: '12px' }}>
+              {a.Nome?.[0]}{a.Cognome?.[0]}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '14px', fontWeight: '500' }}>{a.Nome} {a.Cognome}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{a.Nome_Categoria || ''}</div>
+            </div>
+            {atletaSelezionato === a.Codice_Fiscale && (
+              <span style={{ color: 'var(--accent)', fontSize: '16px' }}>✓</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Quantità</label>
+        <input
+          className="form-input"
+          type="number"
+          min="1"
+          max={set.Quantita_Disponibile}
+          value={quantita}
+          onChange={e => setQuantita(parseInt(e.target.value) || 1)}
+        />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Note (opzionale)</label>
+        <input className="form-input" value={note} onChange={e => setNote(e.target.value)} placeholder="Es. per gara regionale" />
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button className="btn btn-primary" onClick={handleAssegna} disabled={saving || !atletaSelezionato} style={{ flex: 1 }}>
+          {saving ? 'Assegnazione...' : `Assegna ${quantita} ruote`}
+        </button>
+        <button className="btn btn-ghost" onClick={onAnnulla} style={{ flex: 1 }}>
+          Annulla
+        </button>
+      </div>
     </div>
   )
 }

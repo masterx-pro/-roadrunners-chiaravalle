@@ -579,6 +579,91 @@ export async function eliminaSetRuote(idx, ruote) {
 }
 
 // ============================================================
+// ASSEGNAZIONE RUOTE
+// ============================================================
+
+export async function getAssegnazioniRuote() {
+  try {
+    return await leggiSheet(SHEETS.ASSEGNAZIONE_RUOTE)
+  } catch (e) {
+    return []
+  }
+}
+
+export async function getAssegnazioniRuoteAtleta(codiceFiscale) {
+  const assegnazioni = await getAssegnazioniRuote()
+  return assegnazioni.filter(a => a.ID_Atleta === codiceFiscale)
+}
+
+export async function getAssegnazioniRuoteSet(idSet) {
+  const assegnazioni = await getAssegnazioniRuote()
+  return assegnazioni.filter(a => a.ID_Set === idSet)
+}
+
+export async function calcolaDisponibilitaRuote(ruote) {
+  const assegnazioni = await getAssegnazioniRuote()
+
+  return ruote.map(set => {
+    const totaleAssegnate = assegnazioni
+      .filter(a => a.ID_Set === set.ID_Set)
+      .reduce((sum, a) => sum + (parseInt(a.Quantita) || 0), 0)
+
+    const disponibili = (parseInt(set.Quantita) || 0) - totaleAssegnate
+
+    return {
+      ...set,
+      Quantita_Totale: parseInt(set.Quantita) || 0,
+      Quantita_Assegnata: totaleAssegnate,
+      Quantita_Disponibile: Math.max(0, disponibili)
+    }
+  })
+}
+
+export async function assegnaRuote(idSet, codiceFiscale, nomeAtleta, quantita, evento, note) {
+  const ruote = await leggiSheet(SHEETS.RUOTE)
+  const set = ruote.find(r => r.ID_Set === idSet)
+  if (!set) throw new Error('Set ruote non trovato')
+
+  const assegnazioni = await getAssegnazioniRuoteSet(idSet)
+  const totaleAssegnate = assegnazioni.reduce((sum, a) => sum + (parseInt(a.Quantita) || 0), 0)
+  const disponibili = (parseInt(set.Quantita) || 0) - totaleAssegnate
+
+  if (quantita > disponibili) {
+    throw new Error(`Disponibili solo ${disponibili} ruote (richieste ${quantita})`)
+  }
+
+  const id = `AR-${String(Date.now()).slice(-6)}`
+  const oggi = new Date().toISOString().split('T')[0]
+
+  await aggiungiRiga(SHEETS.ASSEGNAZIONE_RUOTE, [
+    id, idSet, codiceFiscale, nomeAtleta,
+    String(quantita), oggi,
+    evento || '', note || ''
+  ])
+
+  invalidaCache(SHEETS.ASSEGNAZIONE_RUOTE)
+  await scriviLog('Assegnazione', 'Ruote', `${quantita} ruote ${set.Diametro_mm}mm a ${nomeAtleta}`)
+
+  return id
+}
+
+export async function rimuoviAssegnazioneRuote(idAssegnazione) {
+  const assegnazioni = await leggiSheet(SHEETS.ASSEGNAZIONE_RUOTE)
+  const idx = assegnazioni.findIndex(a => a.ID_Assegnazione === idAssegnazione)
+  if (idx === -1) throw new Error('Assegnazione non trovata')
+
+  const a = assegnazioni[idx]
+
+  await aggiornaRiga(SHEETS.ASSEGNAZIONE_RUOTE, idx, [
+    a.ID_Assegnazione, a.ID_Set, a.ID_Atleta, a.Nome_Atleta,
+    '0', a.Data_Assegnazione, a.Evento, `Restituito il ${new Date().toISOString().split('T')[0]}`
+  ])
+
+  invalidaCache(SHEETS.ASSEGNAZIONE_RUOTE)
+  await scriviLog('Restituzione', 'Ruote', `${a.Quantita} ruote restituite da ${a.Nome_Atleta}`)
+}
+
+// ============================================================
 // EVENTI
 // ============================================================
 

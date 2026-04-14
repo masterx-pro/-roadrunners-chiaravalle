@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getCategorie, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione, getStoricoScadenze, salvaStoricoScadenza, importaFileFISR } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getCategorie, assegnaPattino, aggiungiRiga, aggiornaRiga, aggiornaCategoria, listaDocumentiAtleta, caricaDocumento, eliminaDocumento, creaCartellaAtleta, scriviLog, getPagamentiAtleta, aggiornaPagamento, generaQuoteAtleta, restituisciPattino, aggiornaPattino, creaPagamento, aggiornaAtletaSicuro, creaCartelleMancanti, getDataPrimoNoleggio, calcolaAnnoInizioStagione, leggiSheet, getConfigurazione, getStoricoScadenze, salvaStoricoScadenza, importaFileFISR, getAssegnazioniRuoteAtleta, rimuoviAssegnazioneRuote, getRuote, calcolaDisponibilitaRuote, assegnaRuote } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
-import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
+import { formattaData, statoScadenza, giorniAllaScadenza, isAtletaMinore, getContattoAtleta } from '../utils/dateUtils'
 import { esportaAtletiExcel, esportaAtletiPDF } from '../utils/exportUtils'
 
 export default function Atleti({ nav }) {
@@ -311,6 +311,9 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
   useEffect(() => { getConfigurazione().then(setConfig) }, [])
   const quotaAnnuale = parseFloat(config.Quota_Annuale) || 300
 
+  // Determina se l'atleta è minore dalla categoria selezionata
+  const catSelezionata = categorie.find(c => c.ID_Categoria === form.idCategoria)
+  const minore = isAtletaMinore({ Nome_Categoria: catSelezionata?.Nome || '' })
 
   return (
     <div>
@@ -441,21 +444,25 @@ function FormAtleta({ form, update, categorie, titolo, onBack, onSalva, saving, 
         )}
       </div>
 
-      <div className="section-title">Contatti genitore</div>
-      <div className="card">
-        <div className="form-group">
-          <label className="form-label">Nome genitore</label>
-          <input className="form-input" value={form.genitoreNome} onChange={e => update('genitoreNome', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Telefono</label>
-          <input className="form-input" type="tel" value={form.genitoreTelefono} onChange={e => update('genitoreTelefono', e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Email</label>
-          <input className="form-input" type="email" value={form.genitoreEmail} onChange={e => update('genitoreEmail', e.target.value)} />
-        </div>
-      </div>
+      {minore && (
+        <>
+          <div className="section-title">Genitore / Tutore</div>
+          <div className="card">
+            <div className="form-group">
+              <label className="form-label">Nome genitore</label>
+              <input className="form-input" value={form.genitoreNome} onChange={e => update('genitoreNome', e.target.value)} placeholder="Nome e cognome genitore" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Telefono genitore</label>
+              <input className="form-input" type="tel" value={form.genitoreTelefono} onChange={e => update('genitoreTelefono', e.target.value)} placeholder="Numero telefono" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email genitore</label>
+              <input className="form-input" type="email" value={form.genitoreEmail} onChange={e => update('genitoreEmail', e.target.value)} placeholder="email@esempio.it" />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="section-title">Scadenze</div>
       <div className="card">
@@ -1030,6 +1037,14 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
   const [nuovoDocFile, setNuovoDocFile] = useState(null)
   const [eliminando, setEliminando] = useState(null)
   const [sottoVista, setSottoVista] = useState(initialSottoVista || null) // 'scadenze' | 'noleggio' | 'pagamenti'
+  const [ruoteAtleta, setRuoteAtleta] = useState([])
+  const [ruoteMagazzino, setRuoteMagazzino] = useState([])
+  const [mostraAssegnaRuote, setMostraAssegnaRuote] = useState(false)
+  const [ruoteConDisp, setRuoteConDisp] = useState([])
+  const [setRuoteSel, setSetRuoteSel] = useState(null)
+  const [qtyRuote, setQtyRuote] = useState(1)
+  const [noteRuote, setNoteRuote] = useState('')
+  const [savingRuote, setSavingRuote] = useState(false)
 
   function navigaSottoVista(nuova) {
     if (nuova) {
@@ -1067,6 +1082,44 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
       )
     }).catch(() => {})
   }, [atleta.ID_Atleta])
+
+  useEffect(() => {
+    async function caricaRuoteAtleta() {
+      const [assegnazioni, magazzino] = await Promise.all([
+        getAssegnazioniRuoteAtleta(atleta.Codice_Fiscale),
+        getRuote()
+      ])
+      setRuoteAtleta(assegnazioni.filter(a => parseInt(a.Quantita) > 0))
+      setRuoteMagazzino(magazzino)
+    }
+    caricaRuoteAtleta()
+  }, [atleta.Codice_Fiscale])
+
+  async function handleAssegnaRuoteAtleta() {
+    if (!setRuoteSel || qtyRuote < 1) return
+    setSavingRuote(true)
+    try {
+      await assegnaRuote(
+        setRuoteSel.ID_Set,
+        atleta.Codice_Fiscale,
+        `${atleta.Nome} ${atleta.Cognome}`,
+        qtyRuote,
+        '',
+        noteRuote
+      )
+      const nuove = await getAssegnazioniRuoteAtleta(atleta.Codice_Fiscale)
+      setRuoteAtleta(nuove.filter(a => parseInt(a.Quantita) > 0))
+      setMostraAssegnaRuote(false)
+      setSetRuoteSel(null)
+      setQtyRuote(1)
+      setNoteRuote('')
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSavingRuote(false)
+    }
+  }
+
   const statoCert = statoScadenza(atleta.Scad_Certificato)
   const statoFISR = statoScadenza(atleta.Scad_FISR)
 
@@ -1215,12 +1268,84 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
       </div>
 
       {/* CONTATTI */}
-      <div className="section-title">Contatti</div>
-      <div className="card">
-        <InfoRow label="Genitore"  value={atleta.Genitore_Nome || '—'} />
-        <InfoRow label="Telefono"  value={atleta.Genitore_Telefono || '—'} />
-        <InfoRow label="Email"     value={atleta.Genitore_Email || '—'} />
-      </div>
+      {(() => {
+        const contatto = getContattoAtleta(atleta)
+        return (
+          <>
+            <div className="section-title">Contatti</div>
+            <div className="card" style={{ marginBottom: '16px' }}>
+              {(contatto.atletaTelefono || contatto.atletaEmail) && (
+                <>
+                  {contatto.minore && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                      Atleta
+                    </div>
+                  )}
+                  {contatto.atletaTelefono && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Telefono</span>
+                      <a href={`tel:${contatto.atletaTelefono}`} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontWeight: '600' }}>
+                        {contatto.atletaTelefono}
+                      </a>
+                    </div>
+                  )}
+                  {contatto.atletaEmail && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: contatto.minore ? '1px solid var(--border)' : 'none' }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>Email</span>
+                      <a href={`mailto:${contatto.atletaEmail}`} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontWeight: '600', fontSize: '13px' }}>
+                        {contatto.atletaEmail}
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {contatto.minore && (
+                <>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '12px', marginBottom: '8px' }}>
+                    Genitore / Tutore
+                  </div>
+                  {contatto.genitoreNome ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Nome</span>
+                        <span style={{ fontWeight: '600' }}>{contatto.genitoreNome}</span>
+                      </div>
+                      {contatto.genitoreTelefono && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Telefono</span>
+                          <a href={`tel:${contatto.genitoreTelefono}`} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontWeight: '600' }}>
+                            {contatto.genitoreTelefono}
+                          </a>
+                        </div>
+                      )}
+                      {contatto.genitoreEmail && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>Email</span>
+                          <a href={`mailto:${contatto.genitoreEmail}`} style={{ color: 'var(--text-primary)', textDecoration: 'none', fontWeight: '600', fontSize: '13px' }}>
+                            {contatto.genitoreEmail}
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--accent-warn)', fontSize: '13px', padding: '8px 0' }}>
+                      Contatto genitore non inserito — aggiungi dalla modifica atleta
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!contatto.minore && (
+                <>
+                  {contatto.atletaTelefono ? null : <InfoRow label="Telefono" value="—" />}
+                  {contatto.atletaEmail ? null : <InfoRow label="Email" value="—" />}
+                </>
+              )}
+            </div>
+          </>
+        )
+      })()}
 
       {/* SCADENZE */}
       <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1297,6 +1422,90 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
             ))}
           </div>
         </>
+      )}
+
+      {/* RUOTE ASSEGNATE */}
+      <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>Ruote assegnate</span>
+        <span style={{ fontSize: '14px', cursor: 'pointer' }} onClick={async () => {
+          if (!mostraAssegnaRuote) {
+            const r = await getRuote()
+            const conDisp = await calcolaDisponibilitaRuote(r.filter(s => s.Stato !== 'Eliminato'))
+            setRuoteConDisp(conDisp.filter(s => s.Quantita_Disponibile > 0))
+          }
+          setMostraAssegnaRuote(!mostraAssegnaRuote)
+        }}>➕</span>
+      </div>
+      <div className="card" style={{ marginBottom: '16px' }}>
+        {ruoteAtleta.length === 0 ? (
+          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', padding: '8px 0' }}>
+            Nessuna ruota assegnata
+          </div>
+        ) : (
+          ruoteAtleta.map(r => {
+            const set = ruoteMagazzino.find(s => s.ID_Set === r.ID_Set)
+            return (
+              <div key={r.ID_Assegnazione} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <div style={{ fontWeight: '600', fontSize: '14px' }}>
+                    {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}A` : `Set ${r.ID_Set}`}
+                  </div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                    {r.Quantita} ruote · Dal {r.Data_Assegnazione ? new Date(r.Data_Assegnazione).toLocaleDateString('it-IT') : '—'}
+                    {r.Evento && ` · ${r.Evento}`}
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '4px 8px', fontSize: '12px', color: 'var(--accent)' }}
+                  onClick={async () => {
+                    if (!confirm('Restituire queste ruote?')) return
+                    await rimuoviAssegnazioneRuote(r.ID_Assegnazione)
+                    setRuoteAtleta(prev => prev.filter(a => a.ID_Assegnazione !== r.ID_Assegnazione))
+                  }}
+                >
+                  ↩ Restituisci
+                </button>
+              </div>
+            )
+          })
+        )}
+      </div>
+
+      {mostraAssegnaRuote && (
+        <div className="card" style={{ marginBottom: '16px' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '14px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+            Assegna ruote a {atleta.Nome} {atleta.Cognome}
+          </div>
+          <div className="form-group">
+            <label className="form-label">Set ruote</label>
+            <select className="form-input" onChange={e => {
+              const s = ruoteConDisp.find(r => r.ID_Set === e.target.value)
+              setSetRuoteSel(s || null)
+            }} value={setRuoteSel?.ID_Set || ''}>
+              <option value="">— Seleziona set —</option>
+              {ruoteConDisp.map(r => (
+                <option key={r.ID_Set} value={r.ID_Set}>
+                  {r.Diametro_mm}mm {r.Durezza_A}A — {r.Quantita_Disponibile} disponibili
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Quantità</label>
+            <input className="form-input" type="number" min="1" max={setRuoteSel?.Quantita_Disponibile || 99} value={qtyRuote} onChange={e => setQtyRuote(parseInt(e.target.value) || 1)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Note (opzionale)</label>
+            <input className="form-input" value={noteRuote} onChange={e => setNoteRuote(e.target.value)} placeholder="Es. per gara regionale" />
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-primary" onClick={handleAssegnaRuoteAtleta} disabled={savingRuote || !setRuoteSel} style={{ flex: 1 }}>
+              {savingRuote ? 'Assegnazione...' : `Assegna ${qtyRuote} ruote`}
+            </button>
+            <button className="btn btn-ghost" onClick={() => setMostraAssegnaRuote(false)} style={{ flex: 1 }}>Annulla</button>
+          </div>
+        </div>
       )}
 
       {/* PAGAMENTI */}
@@ -1574,22 +1783,25 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           {uploading === 'certificato' ? 'Caricamento...' : docCaricato.certificato ? '✅ Certificato caricato (tap per sostituire)' : '📎 Carica certificato medico (foto o file)'}
         </label>
 
-        {atleta.Genitore_Telefono && (
-          <a
-            href={generaLinkWhatsApp(
-              atleta.Genitore_Telefono,
-              `Buongiorno, le ricordiamo che il certificato medico di ${atleta.Nome} ${atleta.Cognome} ${
-                scadCert ? `scade il ${new Date(scadCert).toLocaleDateString('it-IT')}` : 'non risulta presente'
-              }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
-            )}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-ghost"
-            style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
-          >
-            📱 Avvisa su WhatsApp
-          </a>
-        )}
+        {(() => {
+          const contatto = getContattoAtleta(atleta)
+          return contatto.whatsappNumero && (
+            <a
+              href={generaLinkWhatsApp(
+                contatto.whatsappNumero,
+                `Buongiorno, le ricordiamo che il certificato medico di ${atleta.Nome} ${atleta.Cognome} ${
+                  scadCert ? `scade il ${new Date(scadCert).toLocaleDateString('it-IT')}` : 'non risulta presente'
+                }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-ghost"
+              style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
+            >
+              📱 Avvisa {contatto.minore ? contatto.whatsappNome : ''} su WhatsApp
+            </a>
+          )
+        })()}
 
         {storicoCert.length > 0 && (
           <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
@@ -1635,22 +1847,25 @@ function ModificaScadenze({ atleta, atleti, onBack, onSaved }) {
           {uploading === 'fisr' ? 'Caricamento...' : docCaricato.fisr ? '✅ Tessera caricata (tap per sostituire)' : '📎 Carica tessera FISR (foto o file)'}
         </label>
 
-        {atleta.Genitore_Telefono && (
-          <a
-            href={generaLinkWhatsApp(
-              atleta.Genitore_Telefono,
-              `Buongiorno, le ricordiamo che la tessera FISR di ${atleta.Nome} ${atleta.Cognome} ${
-                scadFISR ? `scade il ${new Date(scadFISR).toLocaleDateString('it-IT')}` : 'non risulta presente'
-              }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
-            )}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-ghost"
-            style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
-          >
-            📱 Avvisa su WhatsApp
-          </a>
-        )}
+        {(() => {
+          const contatto = getContattoAtleta(atleta)
+          return contatto.whatsappNumero && (
+            <a
+              href={generaLinkWhatsApp(
+                contatto.whatsappNumero,
+                `Buongiorno, le ricordiamo che la tessera FISR di ${atleta.Nome} ${atleta.Cognome} ${
+                  scadFISR ? `scade il ${new Date(scadFISR).toLocaleDateString('it-IT')}` : 'non risulta presente'
+                }. La preghiamo di provvedere al rinnovo.\n\nGrazie,\n${config?.Nome_Societa || 'La società sportiva'}`
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-ghost"
+              style={{ fontSize: '13px', width: '100%', justifyContent: 'center', marginTop: '8px', color: '#25D366', borderColor: 'rgba(37,211,102,0.3)', textDecoration: 'none' }}
+            >
+              📱 Avvisa {contatto.minore ? contatto.whatsappNome : ''} su WhatsApp
+            </a>
+          )
+        })()}
 
         {storicoFISR.length > 0 && (
           <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
