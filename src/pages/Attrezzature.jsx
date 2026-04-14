@@ -556,7 +556,7 @@ function RuoteView({ nav }) {
                     onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}
                   >⚙️</div>
                   <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}>
-                    <div style={{ fontWeight: '600', fontSize: '15px' }}>{r.Diametro_mm}mm · {r.Durezza_A}A</div>
+                    <div style={{ fontWeight: '600', fontSize: '15px' }}>{r.Diametro_mm}mm · {r.Durezza_A}</div>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                       {r.Quantita_Disponibile}/{r.Quantita_Totale} disponibili
                       {r.Quantita_Assegnata > 0 && ` · ${r.Quantita_Assegnata} assegnate`}
@@ -612,7 +612,7 @@ function NuovoSetRuote({ onBack, onSaved }) {
     setSaving(true)
     try {
       await creaSetRuote({ diametro, durezza, quantita, stato, note })
-      await scriviLog('Nuovo', 'Set Ruote', `${diametro}mm ${durezza}A x${quantita}`)
+      await scriviLog('Nuovo', 'Set Ruote', `${diametro}mm ${durezza} x${quantita}`)
       onSaved()
     } finally { setSaving(false) }
   }
@@ -793,7 +793,7 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
   return (
     <div className="card" style={{ marginTop: '16px' }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
-        Assegna ruote — {set.Diametro_mm}mm {set.Durezza_A}A
+        Assegna ruote — {set.Diametro_mm}mm {set.Durezza_A}
       </div>
       <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
         Disponibili: {set.Quantita_Disponibile}
@@ -934,7 +934,7 @@ function RuoteAssegnatePanel({ nav, onBack }) {
                 <div key={r.ID_Assegnazione} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontSize: '14px' }}>
-                      {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}A` : `Set ${r.ID_Set}`}
+                      {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}` : `Set ${r.ID_Set}`}
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {r.Quantita} ruote · {r.Data_Assegnazione ? new Date(r.Data_Assegnazione).toLocaleDateString('it-IT') : ''}

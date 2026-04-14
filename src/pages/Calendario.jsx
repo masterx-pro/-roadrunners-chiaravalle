@@ -625,7 +625,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
                   <option value="">— Seleziona set —</option>
                   {ruote.map(r => (
                     <option key={r.ID_Set} value={r.ID_Set}>
-                      {r.Diametro_mm}mm {r.Durezza_A}A — {r.Quantita_Disponibile} disponibili
+                      {r.Diametro_mm}mm {r.Durezza_A} — {r.Quantita_Disponibile} disponibili
                     </option>
                   ))}
                 </select>
