@@ -1096,14 +1096,14 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
   }, [atleta.Codice_Fiscale])
 
   async function handleAssegnaRuoteAtleta() {
-    if (!setRuoteSel || qtyRuote < 1) return
+    if (!setRuoteSel || parseInt(qtyRuote) < 1) return
     setSavingRuote(true)
     try {
       await assegnaRuote(
         setRuoteSel.ID_Set,
         atleta.Codice_Fiscale,
         `${atleta.Nome} ${atleta.Cognome}`,
-        qtyRuote,
+        parseInt(qtyRuote),
         '',
         noteRuote
       )
@@ -1493,7 +1493,10 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
           </div>
           <div className="form-group">
             <label className="form-label">Quantità</label>
-            <input className="form-input" type="number" min="1" max={setRuoteSel?.Quantita_Disponibile || 99} value={qtyRuote} onChange={e => setQtyRuote(parseInt(e.target.value) || 1)} />
+            <input className="form-input" type="number" min="1" max={setRuoteSel?.Quantita_Disponibile || 99} value={qtyRuote}
+              onChange={e => setQtyRuote(e.target.value === '' ? '' : e.target.value)}
+              onBlur={e => { if (!e.target.value || parseInt(e.target.value) < 1) setQtyRuote(1) }}
+            />
           </div>
           <div className="form-group">
             <label className="form-label">Note (opzionale)</label>

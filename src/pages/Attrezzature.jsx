@@ -766,7 +766,7 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
     : atleti
 
   async function handleAssegna() {
-    if (!atletaSelezionato || quantita < 1) return
+    if (!atletaSelezionato || parseInt(quantita) < 1) return
     setSaving(true)
     try {
       const atleta = atleti.find(a => a.Codice_Fiscale === atletaSelezionato)
@@ -776,7 +776,7 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
         set.ID_Set,
         atleta.Codice_Fiscale,
         `${atleta.Nome} ${atleta.Cognome}`,
-        quantita,
+        parseInt(quantita),
         evento || '',
         note
       )
@@ -844,7 +844,10 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
           min="1"
           max={set.Quantita_Disponibile}
           value={quantita}
-          onChange={e => setQuantita(parseInt(e.target.value) || 1)}
+          onChange={e => setQuantita(e.target.value === '' ? '' : e.target.value)}
+          onBlur={e => {
+            if (!e.target.value || parseInt(e.target.value) < 1) setQuantita(1)
+          }}
         />
       </div>
 

@@ -274,6 +274,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [refreshDocs, setRefreshDocs] = useState(0)
   const [docCaricato, setDocCaricato] = useState({ ricevuta: false, iscrizione: false })
   const [ricercaAtleta, setRicercaAtleta] = useState('')
+  const [mostraSoloIscritti, setMostraSoloIscritti] = useState(false)
 
   useEffect(() => {
     if (!gara.Drive_Folder_Gara) return
@@ -483,18 +484,27 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
       {/* ISCRITTI */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="section-title" style={{ marginBottom: 0 }}>Atleti iscritti ({iscritti.length}/{atletiAttivi.length})</div>
-        {iscritti.length > 0 && (
-          <div style={{ display: 'flex', gap: '4px' }}>
-            <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
-              const atletiIscrittiDati = atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))
-              esportaIscrittGaraExcel(gara, atletiIscrittiDati)
-            }}>📥 Excel</button>
-            <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
-              const atletiIscrittiDati = atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))
-              esportaIscrittGaraPDF(gara, atletiIscrittiDati)
-            }}>📥 PDF</button>
-          </div>
-        )}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button
+            className={`btn ${mostraSoloIscritti ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ padding: '4px 10px', fontSize: '11px' }}
+            onClick={() => setMostraSoloIscritti(!mostraSoloIscritti)}
+          >
+            {mostraSoloIscritti ? 'Tutti' : 'Solo iscritti'}
+          </button>
+          {iscritti.length > 0 && (
+            <>
+              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
+                const atletiIscrittiDati = atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))
+                esportaIscrittGaraExcel(gara, atletiIscrittiDati)
+              }}>Excel</button>
+              <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => {
+                const atletiIscrittiDati = atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))
+                esportaIscrittGaraPDF(gara, atletiIscrittiDati)
+              }}>PDF</button>
+            </>
+          )}
+        </div>
       </div>
       <div className="card">
         <div className="form-group" style={{ marginBottom: '8px' }}>
@@ -506,34 +516,39 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
             style={{ fontSize: '14px' }}
           />
         </div>
-        {(ricercaAtleta
-          ? atletiAttivi.filter(a => `${a.Nome} ${a.Cognome}`.toLowerCase().includes(ricercaAtleta.toLowerCase()))
-          : atletiAttivi
-        ).map(a => {
-          const isIscritto = iscritti.includes(a.ID_Atleta)
-          return (
-            <div
-              key={a.ID_Atleta}
-              style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
-              onClick={() => !saving && toggleIscritto(a.ID_Atleta)}
-            >
-              <div className="atleta-avatar" style={{
-                background: isIscritto ? 'var(--accent)' : 'var(--bg-elevated)',
-                color: isIscritto ? 'white' : 'var(--text-secondary)',
-                transition: 'all 0.2s'
-              }}>
-                {isIscritto ? '✓' : `${a.Nome?.[0]}${a.Cognome?.[0]}`}
+        {(() => {
+          let lista = ricercaAtleta
+            ? atletiAttivi.filter(a => `${a.Nome} ${a.Cognome}`.toLowerCase().includes(ricercaAtleta.toLowerCase()))
+            : atletiAttivi
+          if (mostraSoloIscritti) {
+            lista = lista.filter(a => iscritti.includes(a.ID_Atleta))
+          }
+          return lista.map(a => {
+            const isIscritto = iscritti.includes(a.ID_Atleta)
+            return (
+              <div
+                key={a.ID_Atleta}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                onClick={() => !saving && toggleIscritto(a.ID_Atleta)}
+              >
+                <div className="atleta-avatar" style={{
+                  background: isIscritto ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: isIscritto ? 'white' : 'var(--text-secondary)',
+                  transition: 'all 0.2s'
+                }}>
+                  {isIscritto ? '✓' : `${a.Nome?.[0]}${a.Cognome?.[0]}`}
+                </div>
+                <div className="atleta-info">
+                  <div className="atleta-nome">{a.Nome} {a.Cognome}{a.Numero_Gara ? ` — #${a.Numero_Gara}` : ''}</div>
+                  <div className="atleta-sub">{a.Nome_Categoria || '—'}</div>
+                </div>
+                <span style={{ color: isIscritto ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '13px' }}>
+                  {isIscritto ? 'Iscritto' : 'Non iscritto'}
+                </span>
               </div>
-              <div className="atleta-info">
-                <div className="atleta-nome">{a.Nome} {a.Cognome}{a.Numero_Gara ? ` — #${a.Numero_Gara}` : ''}</div>
-                <div className="atleta-sub">{a.Nome_Categoria || '—'}</div>
-              </div>
-              <span style={{ color: isIscritto ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '13px' }}>
-                {isIscritto ? 'Iscritto' : 'Non iscritto'}
-              </span>
-            </div>
-          )
-        })}
+            )
+          })
+        })()}
       </div>
 
       {/* RUOTE PER GARA */}
@@ -554,10 +569,9 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
 function AssegnaRuoteGara({ gara, atletiIscritti }) {
   const [aperto, setAperto] = useState(false)
   const [ruote, setRuote] = useState([])
-  const [setSelezionato, setSetSelezionato] = useState(null)
-  const [quantitaPerAtleta, setQuantitaPerAtleta] = useState(4)
-  const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [assegnazioni, setAssegnazioni] = useState({})
 
   async function apriPannello() {
     if (!aperto) {
@@ -565,33 +579,65 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
       const r = await getRuote()
       const conDisp = await calcolaDisponibilitaRuote(r.filter(s => s.Stato !== 'Eliminato'))
       setRuote(conDisp.filter(s => s.Quantita_Disponibile > 0))
+
+      const init = {}
+      atletiIscritti.forEach(a => {
+        const cf = a.Codice_Fiscale || a.ID_Atleta
+        init[cf] = { setId: '', quantita: '4' }
+      })
+      setAssegnazioni(init)
       setLoading(false)
     }
     setAperto(!aperto)
   }
 
-  async function handleAssegnaTutti() {
-    if (!setSelezionato) return
-    const totaleNecessario = atletiIscritti.length * quantitaPerAtleta
-    if (totaleNecessario > setSelezionato.Quantita_Disponibile) {
-      alert(`Ruote insufficienti: servono ${totaleNecessario}, disponibili ${setSelezionato.Quantita_Disponibile}`)
+  function aggiornaAssegnazione(cf, campo, valore) {
+    setAssegnazioni(prev => ({
+      ...prev,
+      [cf]: { ...prev[cf], [campo]: valore }
+    }))
+  }
+
+  async function handleSalvaTutte() {
+    const daAssegnare = Object.entries(assegnazioni)
+      .filter(([, dati]) => dati.setId && parseInt(dati.quantita) > 0)
+
+    if (daAssegnare.length === 0) {
+      alert('Nessuna assegnazione selezionata')
       return
     }
 
     setSaving(true)
     try {
-      for (const atleta of atletiIscritti) {
+      let assegnati = 0
+      for (const [cf, dati] of daAssegnare) {
+        const atleta = atletiIscritti.find(a => (a.Codice_Fiscale || a.ID_Atleta) === cf)
+        if (!atleta) continue
+
         await assegnaRuote(
-          setSelezionato.ID_Set,
-          atleta.Codice_Fiscale || atleta.ID_Atleta,
+          dati.setId,
+          cf,
           `${atleta.Nome} ${atleta.Cognome}`,
-          quantitaPerAtleta,
-          gara.Titolo || gara.Nome || '',
+          parseInt(dati.quantita),
+          gara.Titolo || '',
           ''
         )
+        assegnati++
       }
-      alert(`${quantitaPerAtleta} ruote assegnate a ${atletiIscritti.length} atleti`)
-      setAperto(false)
+
+      alert(`Ruote assegnate a ${assegnati} atleti`)
+
+      setAssegnazioni(prev => {
+        const nuovo = { ...prev }
+        daAssegnare.forEach(([cf]) => {
+          nuovo[cf] = { setId: '', quantita: '4' }
+        })
+        return nuovo
+      })
+
+      const r = await getRuote()
+      const conDisp = await calcolaDisponibilitaRuote(r.filter(s => s.Stato !== 'Eliminato'))
+      setRuote(conDisp.filter(s => s.Quantita_Disponibile > 0))
     } catch (err) {
       alert('Errore: ' + err.message)
     } finally {
@@ -616,41 +662,59 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
             <div style={{ padding: '12px', color: 'var(--text-secondary)' }}>Caricamento ruote...</div>
           ) : (
             <div style={{ marginTop: '12px' }}>
-              <div className="form-group">
-                <label className="form-label">Set ruote</label>
-                <select className="form-input" onChange={e => {
-                  const s = ruote.find(r => r.ID_Set === e.target.value)
-                  setSetSelezionato(s || null)
-                }} value={setSelezionato?.ID_Set || ''}>
-                  <option value="">— Seleziona set —</option>
-                  {ruote.map(r => (
-                    <option key={r.ID_Set} value={r.ID_Set}>
-                      {r.Diametro_mm}mm {r.Durezza_A} — {r.Quantita_Disponibile} disponibili
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {atletiIscritti.map(a => {
+                const cf = a.Codice_Fiscale || a.ID_Atleta
+                const dati = assegnazioni[cf] || { setId: '', quantita: '4' }
 
-              <div className="form-group">
-                <label className="form-label">Ruote per atleta</label>
-                <input className="form-input" type="number" min="1" max="8" value={quantitaPerAtleta} onChange={e => setQuantitaPerAtleta(parseInt(e.target.value) || 4)} />
-              </div>
-
-              {setSelezionato && (
-                <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
-                  Totale necessario: {atletiIscritti.length} atleti × {quantitaPerAtleta} = {atletiIscritti.length * quantitaPerAtleta} ruote
-                  {atletiIscritti.length * quantitaPerAtleta > setSelezionato.Quantita_Disponibile && (
-                    <span style={{ color: 'var(--accent)', marginLeft: '8px' }}>Insufficienti!</span>
-                  )}
-                </div>
-              )}
+                return (
+                  <div key={cf} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                    <div style={{ fontWeight: '600', fontSize: '14px', marginBottom: '6px' }}>
+                      {a.Nome} {a.Cognome}
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: '400', fontSize: '12px', marginLeft: '8px' }}>
+                        {a.Nome_Categoria || ''}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select
+                        className="form-input"
+                        style={{ flex: 2, fontSize: '13px', padding: '6px 8px' }}
+                        value={dati.setId}
+                        onChange={e => aggiornaAssegnazione(cf, 'setId', e.target.value)}
+                      >
+                        <option value="">— Nessuna —</option>
+                        {ruote.map(r => (
+                          <option key={r.ID_Set} value={r.ID_Set}>
+                            {r.Diametro_mm}mm {r.Durezza_A} ({r.Quantita_Disponibile} disp.)
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="form-input"
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={dati.quantita}
+                        onChange={e => aggiornaAssegnazione(cf, 'quantita', e.target.value === '' ? '' : e.target.value)}
+                        onBlur={e => {
+                          if (!e.target.value || parseInt(e.target.value) < 1) {
+                            aggiornaAssegnazione(cf, 'quantita', '1')
+                          }
+                        }}
+                        style={{ width: '60px', fontSize: '13px', padding: '6px 8px', textAlign: 'center' }}
+                      />
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)', flexShrink: 0 }}>ruote</span>
+                    </div>
+                  </div>
+                )
+              })}
 
               <button
                 className="btn btn-primary btn-full"
-                onClick={handleAssegnaTutti}
-                disabled={saving || !setSelezionato || atletiIscritti.length * quantitaPerAtleta > (setSelezionato?.Quantita_Disponibile || 0)}
+                onClick={handleSalvaTutte}
+                disabled={saving || Object.values(assegnazioni).every(d => !d.setId)}
+                style={{ marginTop: '12px' }}
               >
-                {saving ? 'Assegnazione...' : `Assegna a tutti gli iscritti (${atletiIscritti.length})`}
+                {saving ? 'Assegnazione...' : `Assegna ruote (${Object.values(assegnazioni).filter(d => d.setId).length} atleti)`}
               </button>
             </div>
           )
