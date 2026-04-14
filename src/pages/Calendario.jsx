@@ -296,14 +296,17 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
     { label: 'Comunicazione convocati', data: gara.Data_Convocati, icona: '👥' },
   ].filter(s => s.data)
 
-  async function toggleIscritto(idAtleta) {
-    const nuovoIscritto = !iscritti.includes(idAtleta)
-    const nuoviIscritti = nuovoIscritto
-      ? [...iscritti, idAtleta]
-      : iscritti.filter(id => id !== idAtleta)
+  async function toggleIscritto(idAtleta, nomeAtleta) {
+    const eraIscritto = iscritti.includes(idAtleta)
+    if (eraIscritto) {
+      if (!confirm(`Rimuovere ${nomeAtleta} dalla gara?`)) return
+    }
+    const nuoviIscritti = eraIscritto
+      ? iscritti.filter(id => id !== idAtleta)
+      : [...iscritti, idAtleta]
     setSaving(true)
     try {
-      await aggiornaIscrittGara(gara.ID_Evento, idAtleta, nuovoIscritto)
+      await aggiornaIscrittGara(gara.ID_Evento, idAtleta, !eraIscritto)
       setIscritti(nuoviIscritti)
     } finally {
       setSaving(false)
@@ -529,7 +532,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
               <div
                 key={a.ID_Atleta}
                 style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                onClick={() => !saving && toggleIscritto(a.ID_Atleta)}
+                onClick={() => !saving && toggleIscritto(a.ID_Atleta, `${a.Nome} ${a.Cognome}`)}
               >
                 <div className="atleta-avatar" style={{
                   background: isIscritto ? 'var(--accent)' : 'var(--bg-elevated)',
