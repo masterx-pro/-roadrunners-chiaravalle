@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById, leggiSheet, aggiornaPagamento, calcolaDisponibilitaRuote, assegnaRuote } from '../utils/sheetsApi'
+import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, assegnaPattino, restituisciPattino, getRuote, creaSetRuote, aggiornaSetRuote, eliminaSetRuote, aggiornaRiga, aggiornaNumeroGara, scriviLog, getStoricoPattinoById, leggiSheet, aggiornaPagamento, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote, rimuoviAssegnazioneRuote } from '../utils/sheetsApi'
 import { formattaData } from '../utils/dateUtils'
 import { SHEETS } from '../config/google'
 import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
@@ -7,7 +7,15 @@ import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
 const isAttivo = v => ['TRUE', 'true', 'True'].includes(v?.trim())
 
 export default function Attrezzature({ nav }) {
-  const [tab, setTab] = useState('pattini')
+  const [tab, setTab] = useState(() => {
+    const stato = nav.stato
+    if (stato.tab === 'attrezzature' && stato.vista === 'ruote_assegnate') return 'ruote_assegnate'
+    return 'pattini'
+  })
+
+  if (tab === 'ruote_assegnate') {
+    return <RuoteAssegnatePanel nav={nav} onBack={() => { setTab('ruote'); nav.indietro() }} />
+  }
 
   return (
     <div>
@@ -621,8 +629,8 @@ function NuovoSetRuote({ onBack, onSaved }) {
           <input className="form-input" type="number" value={diametro} onChange={e => setDiametro(e.target.value)} placeholder="es. 62" />
         </div>
         <div className="form-group">
-          <label className="form-label">Durezza (A) *</label>
-          <input className="form-input" type="number" value={durezza} onChange={e => setDurezza(e.target.value)} placeholder="es. 92" />
+          <label className="form-label">Durezza *</label>
+          <input className="form-input" type="text" value={durezza} onChange={e => setDurezza(e.target.value)} placeholder="es. 92A, SHR, 84A/80A" />
         </div>
         <div className="form-group">
           <label className="form-label">Quantità *</label>
@@ -687,8 +695,8 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
           <input className="form-input" type="number" value={diametro} onChange={e => setDiametro(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Durezza (A)</label>
-          <input className="form-input" type="number" value={durezza} onChange={e => setDurezza(e.target.value)} />
+          <label className="form-label">Durezza</label>
+          <input className="form-input" type="text" value={durezza} onChange={e => setDurezza(e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label">Quantità</label>
@@ -853,6 +861,100 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
           Annulla
         </button>
       </div>
+    </div>
+  )
+}
+
+// ============================================================
+// RUOTE ASSEGNATE (da Dashboard)
+// ============================================================
+
+function RuoteAssegnatePanel({ nav, onBack }) {
+  const [assegnazioni, setAssegnazioni] = useState([])
+  const [ruoteMagazzino, setRuoteMagazzino] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(null)
+
+  useEffect(() => {
+    async function carica() {
+      const [ar, ruote] = await Promise.all([getAssegnazioniRuote(), getRuote()])
+      const attive = ar.filter(a => parseInt(a.Quantita) > 0)
+      setAssegnazioni(attive)
+      setRuoteMagazzino(ruote)
+      setLoading(false)
+    }
+    carica()
+  }, [])
+
+  async function handleRiconsegna(assegnazione) {
+    setSaving(assegnazione.ID_Assegnazione)
+    try {
+      await rimuoviAssegnazioneRuote(assegnazione.ID_Assegnazione)
+      setAssegnazioni(prev => prev.filter(a => a.ID_Assegnazione !== assegnazione.ID_Assegnazione))
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const perAtleta = {}
+  assegnazioni.forEach(a => {
+    if (!perAtleta[a.ID_Atleta]) {
+      perAtleta[a.ID_Atleta] = { nome: a.Nome_Atleta, ruote: [] }
+    }
+    perAtleta[a.ID_Atleta].ruote.push(a)
+  })
+
+  if (loading) return <div className="loading-center">Caricamento...</div>
+
+  return (
+    <div>
+      <div className="page-header">
+        <button className="btn btn-ghost" onClick={onBack} style={{ padding: '8px 12px' }}>← Indietro</button>
+        <h1 className="page-title" style={{ fontSize: '22px' }}>Ruote assegnate</h1>
+      </div>
+
+      {Object.keys(perAtleta).length === 0 ? (
+        <div className="card">
+          <div className="empty-state">
+            <div className="empty-state-icon">✅</div>
+            <div className="empty-state-text">Nessuna ruota assegnata</div>
+          </div>
+        </div>
+      ) : (
+        Object.entries(perAtleta).map(([cf, dati]) => (
+          <div className="card" key={cf} style={{ marginBottom: '12px' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', marginBottom: '8px' }}>
+              {dati.nome}
+            </div>
+            {dati.ruote.map(r => {
+              const set = ruoteMagazzino.find(s => s.ID_Set === r.ID_Set)
+              return (
+                <div key={r.ID_Assegnazione} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize: '14px' }}>
+                      {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}A` : `Set ${r.ID_Set}`}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {r.Quantita} ruote · {r.Data_Assegnazione ? new Date(r.Data_Assegnazione).toLocaleDateString('it-IT') : ''}
+                      {r.Evento && ` · ${r.Evento}`}
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--accent)' }}
+                    disabled={saving === r.ID_Assegnazione}
+                    onClick={() => handleRiconsegna(r)}
+                  >
+                    {saving === r.ID_Assegnazione ? '...' : '↩ Riconsegna'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        ))
+      )}
     </div>
   )
 }

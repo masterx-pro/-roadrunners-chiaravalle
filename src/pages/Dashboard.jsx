@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getAtleti, getPattini, getEventiSpeciali, leggiSheet } from '../utils/sheetsApi'
+import { getAtleti, getPattini, getEventiSpeciali, leggiSheet, getAssegnazioniRuote } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData } from '../utils/dateUtils'
 
@@ -8,18 +8,20 @@ export default function Dashboard({ nav }) {
   const [pattini, setPattini] = useState([])
   const [eventi, setEventi] = useState([])
   const [pagamenti, setPagamenti] = useState([])
+  const [assegnazioniRuote, setAssegnazioniRuote] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function carica() {
       try {
-        const [a, p, e, pag] = await Promise.all([
-          getAtleti(), getPattini(), getEventiSpeciali(), leggiSheet(SHEETS.PAGAMENTI)
+        const [a, p, e, pag, ar] = await Promise.all([
+          getAtleti(), getPattini(), getEventiSpeciali(), leggiSheet(SHEETS.PAGAMENTI), getAssegnazioniRuote()
         ])
         setAtleti(a)
         setPattini(p)
         setEventi(e)
         setPagamenti(pag)
+        setAssegnazioniRuote(ar.filter(r => parseInt(r.Quantita) > 0))
       } catch (err) {
         console.error(err)
       } finally {
@@ -76,50 +78,13 @@ export default function Dashboard({ nav }) {
           </div>
           <div className="stat-label">Noleggio da riscuotere</div>
         </div>
-      </div>
-
-      {/* QUOTE ASSOCIATIVE */}
-      {(() => {
-        const quoteAssociative = pagamenti.filter(p => p.Tipo === 'Quota')
-        const quotePagate = quoteAssociative.filter(p => p.Stato === 'Pagato')
-        const quoteDaPagare = quoteAssociative.filter(p => p.Stato !== 'Pagato')
-        const totaleQuoteDovuto = quoteAssociative.reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
-        const totaleQuotePagato = quotePagate.reduce((sum, p) => sum + (parseFloat(p.Importo) || 0), 0)
-
-        if (quoteAssociative.length === 0) return null
-
-        return (
-          <div className="card" style={{ marginBottom: '16px', cursor: 'pointer' }}
-            onClick={() => nav.navigaA('atleti', {})}
-          >
-            <div className="section-title" style={{ margin: '0 0 12px 0' }}>💳 Quote associative</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '16px' }}>
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: 'var(--accent-ok)' }}>
-                    {quotePagate.length}
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Pagate</div>
-                </div>
-                <div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '24px', fontWeight: '700', color: quoteDaPagare.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
-                    {quoteDaPagare.length}
-                  </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Da pagare</div>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: '700' }}>
-                  €{totaleQuotePagato}
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                  su €{totaleQuoteDovuto}
-                </div>
-              </div>
-            </div>
+        <div className="stat-card" onClick={() => nav.navigaA('attrezzature', { vista: 'ruote_assegnate' })} style={{ cursor: 'pointer' }}>
+          <div className="stat-value" style={{ color: assegnazioniRuote.length > 0 ? 'var(--accent-warn)' : 'var(--accent-ok)' }}>
+            {assegnazioniRuote.reduce((sum, a) => sum + (parseInt(a.Quantita) || 0), 0)}
           </div>
-        )
-      })()}
+          <div className="stat-label">Ruote assegnate</div>
+        </div>
+      </div>
 
       {/* PROSSIMO EVENTO */}
       {prossimoEvento && (
