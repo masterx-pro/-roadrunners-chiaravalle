@@ -583,7 +583,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
       const init = {}
       atletiIscritti.forEach(a => {
         const cf = a.Codice_Fiscale || a.ID_Atleta
-        init[cf] = { setId: '', quantita: '4' }
+        init[cf] = { setId: '', quantita: '0' }
       })
       setAssegnazioni(init)
       setLoading(false)
@@ -605,6 +605,21 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
     if (daAssegnare.length === 0) {
       alert('Nessuna assegnazione selezionata')
       return
+    }
+
+    // Verifica disponibilità per set
+    const totalePerSet = {}
+    daAssegnare.forEach(([, dati]) => {
+      if (!totalePerSet[dati.setId]) totalePerSet[dati.setId] = 0
+      totalePerSet[dati.setId] += parseInt(dati.quantita) || 0
+    })
+
+    for (const [setId, totale] of Object.entries(totalePerSet)) {
+      const set = ruote.find(r => r.ID_Set === setId)
+      if (set && totale > set.Quantita_Disponibile) {
+        alert(`Ruote insufficienti per ${set.Diametro_mm}mm ${set.Durezza_A}: richieste ${totale}, disponibili ${set.Quantita_Disponibile}`)
+        return
+      }
     }
 
     setSaving(true)
@@ -630,7 +645,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
       setAssegnazioni(prev => {
         const nuovo = { ...prev }
         daAssegnare.forEach(([cf]) => {
-          nuovo[cf] = { setId: '', quantita: '4' }
+          nuovo[cf] = { setId: '', quantita: '0' }
         })
         return nuovo
       })
@@ -644,6 +659,8 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
       setSaving(false)
     }
   }
+
+  const atletiConRuote = Object.values(assegnazioni).filter(d => d.setId && parseInt(d.quantita) > 0).length
 
   return (
     <>
@@ -664,7 +681,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
             <div style={{ marginTop: '12px' }}>
               {atletiIscritti.map(a => {
                 const cf = a.Codice_Fiscale || a.ID_Atleta
-                const dati = assegnazioni[cf] || { setId: '', quantita: '4' }
+                const dati = assegnazioni[cf] || { setId: '', quantita: '0' }
 
                 return (
                   <div key={cf} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
@@ -682,22 +699,32 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
                         onChange={e => aggiornaAssegnazione(cf, 'setId', e.target.value)}
                       >
                         <option value="">— Nessuna —</option>
-                        {ruote.map(r => (
-                          <option key={r.ID_Set} value={r.ID_Set}>
-                            {r.Diametro_mm}mm {r.Durezza_A} ({r.Quantita_Disponibile} disp.)
-                          </option>
-                        ))}
+                        {ruote.map(r => {
+                          const prenotateAltri = Object.entries(assegnazioni).reduce((sum, [altroCf, altriDati]) => {
+                            if (altroCf !== cf && altriDati.setId === r.ID_Set && altriDati.quantita) {
+                              return sum + (parseInt(altriDati.quantita) || 0)
+                            }
+                            return sum
+                          }, 0)
+                          const dispReale = Math.max(0, r.Quantita_Disponibile - prenotateAltri)
+
+                          return (
+                            <option key={r.ID_Set} value={r.ID_Set} disabled={dispReale <= 0 && dati.setId !== r.ID_Set}>
+                              {r.Diametro_mm}mm {r.Durezza_A} ({dispReale} disp.)
+                            </option>
+                          )
+                        })}
                       </select>
                       <input
                         className="form-input"
                         type="number"
-                        min="1"
+                        min="0"
                         max="20"
                         value={dati.quantita}
                         onChange={e => aggiornaAssegnazione(cf, 'quantita', e.target.value === '' ? '' : e.target.value)}
                         onBlur={e => {
-                          if (!e.target.value || parseInt(e.target.value) < 1) {
-                            aggiornaAssegnazione(cf, 'quantita', '1')
+                          if (e.target.value === '' || parseInt(e.target.value) < 0) {
+                            aggiornaAssegnazione(cf, 'quantita', '0')
                           }
                         }}
                         style={{ width: '60px', fontSize: '13px', padding: '6px 8px', textAlign: 'center' }}
@@ -711,10 +738,10 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
               <button
                 className="btn btn-primary btn-full"
                 onClick={handleSalvaTutte}
-                disabled={saving || Object.values(assegnazioni).every(d => !d.setId)}
+                disabled={saving || atletiConRuote === 0}
                 style={{ marginTop: '12px' }}
               >
-                {saving ? 'Assegnazione...' : `Assegna ruote (${Object.values(assegnazioni).filter(d => d.setId).length} atleti)`}
+                {saving ? 'Assegnazione...' : `Assegna ruote (${atletiConRuote} atleti)`}
               </button>
             </div>
           )
