@@ -273,6 +273,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [statoPag, setStatoPag] = useState(gara.Stato_Pagamento_Gara || 'Da pagare')
   const [refreshDocs, setRefreshDocs] = useState(0)
   const [docCaricato, setDocCaricato] = useState({ ricevuta: false, iscrizione: false })
+  const [ricercaAtleta, setRicercaAtleta] = useState('')
 
   useEffect(() => {
     if (!gara.Drive_Folder_Gara) return
@@ -496,7 +497,19 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
         )}
       </div>
       <div className="card">
-        {atletiAttivi.map(a => {
+        <div className="form-group" style={{ marginBottom: '8px' }}>
+          <input
+            className="form-input"
+            placeholder="Cerca atleta..."
+            value={ricercaAtleta}
+            onChange={e => setRicercaAtleta(e.target.value)}
+            style={{ fontSize: '14px' }}
+          />
+        </div>
+        {(ricercaAtleta
+          ? atletiAttivi.filter(a => `${a.Nome} ${a.Cognome}`.toLowerCase().includes(ricercaAtleta.toLowerCase()))
+          : atletiAttivi
+        ).map(a => {
           const isIscritto = iscritti.includes(a.ID_Atleta)
           return (
             <div
