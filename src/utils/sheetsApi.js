@@ -584,8 +584,10 @@ export async function eliminaSetRuote(idx, ruote) {
 
 export async function getAssegnazioniRuote() {
   try {
-    return await leggiSheet(SHEETS.ASSEGNAZIONE_RUOTE)
+    const righe = await leggiSheet(SHEETS.ASSEGNAZIONE_RUOTE)
+    return (righe || []).filter(r => r && r.ID_Assegnazione)
   } catch (e) {
+    console.warn('Foglio Assegnazione_Ruote non trovato o vuoto:', e)
     return []
   }
 }
@@ -603,16 +605,20 @@ export async function getAssegnazioniRuoteSet(idSet) {
 export async function calcolaDisponibilitaRuote(ruote) {
   const assegnazioni = await getAssegnazioniRuote()
 
-  return ruote.map(set => {
-    const totaleAssegnate = assegnazioni
-      .filter(a => a.ID_Set === set.ID_Set)
-      .reduce((sum, a) => sum + (parseInt(a.Quantita) || 0), 0)
+  return (ruote || []).map(set => {
+    const totaleAssegnate = (assegnazioni || [])
+      .filter(a => a?.ID_Set === set?.ID_Set)
+      .reduce((sum, a) => {
+        const q = parseInt(a?.Quantita || 0)
+        return sum + (isNaN(q) ? 0 : q)
+      }, 0)
 
-    const disponibili = (parseInt(set.Quantita) || 0) - totaleAssegnate
+    const totale = parseInt(set?.Quantita || 0)
+    const disponibili = totale - totaleAssegnate
 
     return {
       ...set,
-      Quantita_Totale: parseInt(set.Quantita) || 0,
+      Quantita_Totale: totale,
       Quantita_Assegnata: totaleAssegnate,
       Quantita_Disponibile: Math.max(0, disponibili)
     }

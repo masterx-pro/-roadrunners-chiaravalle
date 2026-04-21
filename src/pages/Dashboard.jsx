@@ -21,7 +21,7 @@ export default function Dashboard({ nav }) {
         setPattini(p)
         setEventi(e)
         setPagamenti(pag)
-        setAssegnazioniRuote(ar.filter(r => parseInt(r.Quantita) > 0))
+        setAssegnazioniRuote((ar || []).filter(r => parseInt(r?.Quantita || 0) > 0))
       } catch (err) {
         console.error(err)
       } finally {
@@ -144,7 +144,7 @@ function AlertRow({ alert, onClick }) {
   return (
     <div className="atleta-row" style={{ cursor: 'pointer' }} onClick={() => onClick?.(alert)}>
       <div className="atleta-avatar">
-        {alert.atleta.split(' ').map(p => p[0]).join('').slice(0, 2)}
+        {(alert.atleta || alert.gara || '').split(' ').map(p => p[0]).join('').slice(0, 2)}
       </div>
       <div className="atleta-info">
         <div className="atleta-nome">{alert.atleta}</div>
