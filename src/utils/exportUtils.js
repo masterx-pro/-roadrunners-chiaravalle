@@ -105,12 +105,12 @@ export function esportaPattiniExcel(pattini, atleti) {
 }
 
 export function esportaRuoteExcel(ruote) {
-  const dati = ruote.filter(r => r.Stato !== 'Eliminato').map(r => ({
+  const dati = ruote.map(r => ({
     'ID': r.ID_Set,
+    'Nome': r.Nome || '',
     'Diametro mm': r.Diametro_mm,
     'Durezza A': r.Durezza_A,
     'Quantità': r.Quantita,
-    'Stato': r.Stato,
     'Note': r.Note || ''
   }))
   scaricaExcel(dati, Object.keys(dati[0] || {}), 'ruote_roadrunners.xlsx')

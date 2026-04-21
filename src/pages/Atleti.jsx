@@ -1448,7 +1448,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
               <div key={r.ID_Assegnazione} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
                 <div>
                   <div style={{ fontWeight: '600', fontSize: '14px' }}>
-                    {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}` : `Set ${r.ID_Set}`}
+                    {set ? (set.Nome || `${set.Diametro_mm}mm ${set.Durezza_A}`) : `Set ${r.ID_Set}`}
                   </div>
                   <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                     {r.Quantita} ruote · Dal {r.Data_Assegnazione ? new Date(r.Data_Assegnazione).toLocaleDateString('it-IT') : '—'}
@@ -1486,7 +1486,7 @@ function SchedaAtleta({ atleta, atleti, pattini, nav, initialSottoVista, onBack,
               <option value="">— Seleziona set —</option>
               {ruoteConDisp.map(r => (
                 <option key={r.ID_Set} value={r.ID_Set}>
-                  {r.Diametro_mm}mm {r.Durezza_A} — {r.Quantita_Disponibile} disponibili
+                  {r.Nome ? `${r.Nome} (${r.Quantita_Disponibile} disp.)` : `${r.Diametro_mm}mm ${r.Durezza_A} (${r.Quantita_Disponibile} disp.)`}
                 </option>
               ))}
             </select>

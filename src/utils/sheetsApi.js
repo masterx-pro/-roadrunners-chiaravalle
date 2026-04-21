@@ -561,21 +561,25 @@ export async function getRuote() {
 
 export async function creaSetRuote(ruote) {
   const id = `R-${String(Date.now()).slice(-4)}`
-  await aggiungiRiga(SHEETS.RUOTE, [id, ruote.diametro, ruote.durezza, ruote.quantita, ruote.stato || 'Buone', ruote.note || ''])
+  await aggiungiRiga(SHEETS.RUOTE, [id, ruote.nome || '', ruote.diametro || '', ruote.durezza || '', ruote.quantita || '0', ruote.note || ''])
+  invalidaCache(SHEETS.RUOTE)
+  await scriviLog('Nuovo', 'Set Ruote', `${ruote.nome || ''} ${ruote.diametro}mm`)
   return id
 }
 
 export async function aggiornaSetRuote(idx, ruote) {
-  return aggiornaRiga(SHEETS.RUOTE, idx, [
-    ruote.ID_Set, ruote.Diametro_mm, ruote.Durezza_A,
-    ruote.Quantita, ruote.Stato, ruote.Note || ''
+  await aggiornaRiga(SHEETS.RUOTE, idx, [
+    ruote.ID_Set, ruote.Nome || '', ruote.Diametro_mm || '', ruote.Durezza_A || '',
+    ruote.Quantita || '0', ruote.Note || ''
   ])
+  invalidaCache(SHEETS.RUOTE)
 }
 
 export async function eliminaSetRuote(idx, ruote) {
-  return aggiornaRiga(SHEETS.RUOTE, idx, [
-    ruote.ID_Set, ruote.Diametro_mm, ruote.Durezza_A, '0', 'Eliminato', ruote.Note || ''
+  await aggiornaRiga(SHEETS.RUOTE, idx, [
+    ruote.ID_Set, ruote.Nome || '', ruote.Diametro_mm || '', ruote.Durezza_A || '', '0', '__DEL__'
   ])
+  invalidaCache(SHEETS.RUOTE)
 }
 
 // ============================================================
@@ -648,7 +652,7 @@ export async function assegnaRuote(idSet, codiceFiscale, nomeAtleta, quantita, e
   ])
 
   invalidaCache(SHEETS.ASSEGNAZIONE_RUOTE)
-  await scriviLog('Assegnazione', 'Ruote', `${quantita} ruote ${set.Diametro_mm}mm a ${nomeAtleta}`)
+  await scriviLog('Assegnazione', 'Ruote', `${quantita} ruote ${set.Nome || set.Diametro_mm + 'mm'} a ${nomeAtleta}`)
 
   return id
 }

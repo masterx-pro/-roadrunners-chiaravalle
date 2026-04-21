@@ -491,6 +491,7 @@ function RuoteView({ nav }) {
   const [selezionato, setSelezionato] = useState(null)
   const [selIdx, setSelIdx] = useState(null)
   const [assegnaRuoteSet, setAssegnaRuoteSet] = useState(null)
+  const [filtroDiametro, setFiltroDiametro] = useState(null)
 
   function navigaVista(nuovaVista) {
     nav.avanti({ tab: 'attrezzature', vista: nuovaVista })
@@ -509,7 +510,7 @@ function RuoteView({ nav }) {
   async function ricarica() {
     setLoading(true)
     const r = await getRuote()
-    const filtrate = r.filter(r => r.Stato !== 'Eliminato')
+    const filtrate = r.filter(r => r.ID_Set && !(r.Note || '').startsWith('__DEL__'))
     setRuote(filtrate)
     const conDisp = await calcolaDisponibilitaRuote(filtrate)
     setRuoteConDisp(conDisp)
@@ -533,54 +534,83 @@ function RuoteView({ nav }) {
     />
   }
 
+  const diametriDisponibili = [...new Set(
+    ruoteConDisp.map(r => r.Diametro_mm).filter(Boolean)
+  )].sort((a, b) => parseInt(a) - parseInt(b))
+
+  const ruoteFiltrate = filtroDiametro
+    ? ruoteConDisp.filter(r => r.Diametro_mm === filtroDiametro)
+    : ruoteConDisp
+
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginBottom: '12px' }}>
-        <button className="btn btn-ghost" onClick={() => esportaRuoteExcel(ruote)} style={{ padding: '6px 12px', fontSize: '13px' }}>📥 Excel</button>
-        <button className="btn btn-primary" onClick={() => navigaVista('nuovo')} style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }}>+</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <button
+            className={`badge ${!filtroDiametro ? 'badge-danger' : 'badge-muted'}`}
+            style={{ cursor: 'pointer', border: 'none', padding: '6px 10px', fontSize: '12px' }}
+            onClick={() => setFiltroDiametro(null)}
+          >
+            Tutti
+          </button>
+          {diametriDisponibili.map(d => (
+            <button
+              key={d}
+              className={`badge ${filtroDiametro === d ? 'badge-danger' : 'badge-muted'}`}
+              style={{ cursor: 'pointer', border: 'none', padding: '6px 10px', fontSize: '12px' }}
+              onClick={() => setFiltroDiametro(filtroDiametro === d ? null : d)}
+            >
+              {d}mm
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => esportaRuoteExcel(ruote)}>📊 Excel</button>
+          <button className="btn btn-primary" style={{ padding: '6px 14px', fontSize: '18px', lineHeight: 1 }} onClick={() => navigaVista('nuovo')}>+</button>
+        </div>
       </div>
 
       <div className="card">
-        {ruoteConDisp.length === 0 ? (
+        {ruoteFiltrate.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state-icon">⚙️</div>
             <div className="empty-state-text">Magazzino vuoto</div>
           </div>
         ) : (
-          ruoteConDisp.map((r, i) => {
-            const realIdx = i
-            return (
-              <div key={r.ID_Set} style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', flexShrink: 0, cursor: 'pointer' }}
-                    onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}
-                  >⚙️</div>
-                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => { setSelezionato(r); setSelIdx(realIdx); navigaVista('dettaglio') }}>
-                    <div style={{ fontWeight: '600', fontSize: '15px' }}>{r.Diametro_mm}mm · {r.Durezza_A}</div>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                      {r.Quantita_Disponibile}/{r.Quantita_Totale} disponibili
-                      {r.Quantita_Assegnata > 0 && ` · ${r.Quantita_Assegnata} assegnate`}
-                      {r.Note && ` · ${r.Note}`}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <span className={`badge ${r.Stato === 'Da sostituire' ? 'badge-danger' : r.Stato === 'Usurate' ? 'badge-warn' : r.Quantita_Disponibile > 0 ? 'badge-ok' : 'badge-danger'}`}>
-                      {r.Quantita_Disponibile > 0 ? `${r.Quantita_Disponibile} disp.` : 'Esaurite'}
-                    </span>
-                    {r.Quantita_Disponibile > 0 && (
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: '4px 8px', fontSize: '12px' }}
-                        onClick={(e) => { e.stopPropagation(); setAssegnaRuoteSet(r) }}
-                      >
-                        Assegna
-                      </button>
-                    )}
+          ruoteFiltrate.map((r, i) => (
+            <div key={r.ID_Set} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '4px', fontSize: '16px', color: 'var(--text-secondary)' }}
+                  onClick={() => { setSelezionato(r); setSelIdx(i); navigaVista('dettaglio') }}
+                >
+                  ⚙️
+                </button>
+                <div>
+                  <div style={{ fontWeight: '700', fontSize: '15px' }}>{r.Nome || '—'}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '2px' }}>
+                    {r.Diametro_mm}mm · {r.Durezza_A} · {r.Quantita_Disponibile}/{r.Quantita_Totale} disponibili
+                    {r.Quantita_Assegnata > 0 && ` · ${r.Quantita_Assegnata} assegnate`}
                   </div>
                 </div>
               </div>
-            )
-          })
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span className={`badge ${r.Quantita_Disponibile > 0 ? 'badge-ok' : 'badge-danger'}`}>
+                  {r.Quantita_Disponibile > 0 ? `${r.Quantita_Disponibile} disp.` : 'Esaurite'}
+                </span>
+                {r.Quantita_Disponibile > 0 && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ padding: '4px 8px', fontSize: '12px' }}
+                    onClick={() => setAssegnaRuoteSet(r)}
+                  >
+                    Assegna
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -600,19 +630,18 @@ function RuoteView({ nav }) {
 // ============================================================
 
 function NuovoSetRuote({ onBack, onSaved }) {
+  const [nome, setNome] = useState('')
   const [diametro, setDiametro] = useState('')
   const [durezza, setDurezza] = useState('')
   const [quantita, setQuantita] = useState('')
-  const [stato, setStato] = useState('Buone')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function handleSalva() {
-    if (!diametro || !durezza || !quantita) return
+    if (!diametro || !quantita) return
     setSaving(true)
     try {
-      await creaSetRuote({ diametro, durezza, quantita, stato, note })
-      await scriviLog('Nuovo', 'Set Ruote', `${diametro}mm ${durezza} x${quantita}`)
+      await creaSetRuote({ nome, diametro, durezza, quantita, note })
       onSaved()
     } finally { setSaving(false) }
   }
@@ -625,29 +654,27 @@ function NuovoSetRuote({ onBack, onSaved }) {
       </div>
       <div className="card">
         <div className="form-group">
-          <label className="form-label">Diametro (mm) *</label>
-          <input className="form-input" type="number" value={diametro} onChange={e => setDiametro(e.target.value)} placeholder="es. 62" />
+          <label className="form-label">Nome *</label>
+          <input className="form-input" type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Es. BLACK MAGIC MPC, HYDROGEN MARIANI" />
         </div>
         <div className="form-group">
-          <label className="form-label">Durezza *</label>
-          <input className="form-input" type="text" value={durezza} onChange={e => setDurezza(e.target.value)} placeholder="es. 92A, SHR, 84A/80A" />
+          <label className="form-label">Diametro (mm) *</label>
+          <input className="form-input" type="number" value={diametro} onChange={e => setDiametro(e.target.value)} placeholder="Es. 84, 100, 110" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Durezza</label>
+          <input className="form-input" type="text" value={durezza} onChange={e => setDurezza(e.target.value)} placeholder="Es. 82A, XX, Hh, SHR" />
         </div>
         <div className="form-group">
           <label className="form-label">Quantità *</label>
-          <input className="form-input" type="number" value={quantita} onChange={e => setQuantita(e.target.value)} placeholder="es. 8" />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Stato</label>
-          <select className="form-input" value={stato} onChange={e => setStato(e.target.value)}>
-            <option>Buone</option><option>Usurate</option><option>Da sostituire</option>
-          </select>
+          <input className="form-input" type="number" min="0" value={quantita} onChange={e => setQuantita(e.target.value)} placeholder="Es. 16" />
         </div>
         <div className="form-group">
           <label className="form-label">Note</label>
-          <textarea className="form-input" rows="2" value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical' }} />
+          <input className="form-input" type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="Note aggiuntive" />
         </div>
       </div>
-      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving || !diametro || !durezza || !quantita} style={{ marginTop: '12px' }}>
+      <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving || !diametro || !quantita} style={{ marginTop: '12px' }}>
         {saving ? 'Salvataggio...' : 'Salva set ruote'}
       </button>
     </div>
@@ -659,10 +686,10 @@ function NuovoSetRuote({ onBack, onSaved }) {
 // ============================================================
 
 function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
+  const [nome, setNome] = useState(ruote.Nome || '')
   const [diametro, setDiametro] = useState(ruote.Diametro_mm || '')
   const [durezza, setDurezza] = useState(ruote.Durezza_A || '')
   const [quantita, setQuantita] = useState(ruote.Quantita || '')
-  const [stato, setStato] = useState(ruote.Stato || 'Buone')
   const [note, setNote] = useState(ruote.Note || '')
   const [saving, setSaving] = useState(false)
   const [confermaElimina, setConfermaElimina] = useState(false)
@@ -670,7 +697,7 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
   async function handleSalva() {
     setSaving(true)
     try {
-      await aggiornaSetRuote(idx, { ...ruote, Diametro_mm: diametro, Durezza_A: durezza, Quantita: quantita, Stato: stato, Note: note })
+      await aggiornaSetRuote(idx, { ...ruote, Nome: nome, Diametro_mm: diametro, Durezza_A: durezza, Quantita: quantita, Note: note })
       onSaved()
     } finally { setSaving(false) }
   }
@@ -678,7 +705,7 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
   async function handleElimina() {
     setSaving(true)
     try {
-      await eliminaSetRuote(idx, ruote)
+      await eliminaSetRuote(idx, { ...ruote, Nome: nome })
       onSaved()
     } finally { setSaving(false) }
   }
@@ -691,6 +718,10 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
       </div>
       <div className="card">
         <div className="form-group">
+          <label className="form-label">Nome</label>
+          <input className="form-input" type="text" value={nome} onChange={e => setNome(e.target.value)} placeholder="Es. BLACK MAGIC MPC" />
+        </div>
+        <div className="form-group">
           <label className="form-label">Diametro (mm)</label>
           <input className="form-input" type="number" value={diametro} onChange={e => setDiametro(e.target.value)} />
         </div>
@@ -700,17 +731,11 @@ function DettaglioRuote({ ruote, idx, onBack, onSaved }) {
         </div>
         <div className="form-group">
           <label className="form-label">Quantità</label>
-          <input className="form-input" type="number" value={quantita} onChange={e => setQuantita(e.target.value)} />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Stato</label>
-          <select className="form-input" value={stato} onChange={e => setStato(e.target.value)}>
-            <option>Buone</option><option>Usurate</option><option>Da sostituire</option>
-          </select>
+          <input className="form-input" type="number" min="0" value={quantita} onChange={e => setQuantita(e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label">Note</label>
-          <textarea className="form-input" rows="2" value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical' }} />
+          <input className="form-input" type="text" value={note} onChange={e => setNote(e.target.value)} />
         </div>
       </div>
       <button className="btn btn-primary btn-full" onClick={handleSalva} disabled={saving} style={{ marginTop: '12px' }}>
@@ -793,7 +818,7 @@ function AssegnaRuotePanel({ set, evento, atletiPreselezionati, onDone, onAnnull
   return (
     <div className="card" style={{ marginTop: '16px' }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
-        Assegna ruote — {set.Diametro_mm}mm {set.Durezza_A}
+        Assegna ruote — {set.Nome || `${set.Diametro_mm}mm ${set.Durezza_A}`}
       </div>
       <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
         Disponibili: {set.Quantita_Disponibile}
@@ -937,7 +962,7 @@ function RuoteAssegnatePanel({ nav, onBack }) {
                 <div key={r.ID_Assegnazione} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderTop: '1px solid var(--border)' }}>
                   <div>
                     <div style={{ fontSize: '14px' }}>
-                      {set ? `${set.Diametro_mm}mm — ${set.Durezza_A}` : `Set ${r.ID_Set}`}
+                      {set ? (set.Nome || `${set.Diametro_mm}mm ${set.Durezza_A}`) : `Set ${r.ID_Set}`}
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                       {r.Quantita} ruote · {r.Data_Assegnazione ? new Date(r.Data_Assegnazione).toLocaleDateString('it-IT') : ''}

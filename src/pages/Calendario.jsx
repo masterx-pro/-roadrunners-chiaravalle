@@ -620,7 +620,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
     for (const [setId, totale] of Object.entries(totalePerSet)) {
       const set = ruote.find(r => r.ID_Set === setId)
       if (set && totale > set.Quantita_Disponibile) {
-        alert(`Ruote insufficienti per ${set.Diametro_mm}mm ${set.Durezza_A}: richieste ${totale}, disponibili ${set.Quantita_Disponibile}`)
+        alert(`Ruote insufficienti per ${set.Nome || set.Diametro_mm + 'mm ' + set.Durezza_A}: richieste ${totale}, disponibili ${set.Quantita_Disponibile}`)
         return
       }
     }
@@ -713,7 +713,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
 
                           return (
                             <option key={r.ID_Set} value={r.ID_Set} disabled={dispReale <= 0 && dati.setId !== r.ID_Set}>
-                              {r.Diametro_mm}mm {r.Durezza_A} ({dispReale} disp.)
+                              {r.Nome ? `${r.Nome} (${dispReale} disp.)` : `${r.Diametro_mm}mm ${r.Durezza_A} (${dispReale} disp.)`}
                             </option>
                           )
                         })}
