@@ -88,7 +88,8 @@ export const SHEETS = {
   PAGAMENTI:       'Pagamenti',
   CONFIGURAZIONE:  'Configurazione',
   STORICO_SCADENZE: 'Storico_Scadenze',
-  ASSEGNAZIONE_RUOTE: 'Assegnazione_Ruote'
+  ASSEGNAZIONE_RUOTE: 'Assegnazione_Ruote',
+  TROLLEY_GARA:       'Trolley_Gara'
 }
 
 // ============================================================

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote, getTrolleyGara, aggiuntaTrolley, restituisciTrolleyVoce, restituisciTrolleyTutto } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -277,17 +277,24 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [mostraSoloIscritti, setMostraSoloIscritti] = useState(false)
   const [assegnazioniGara, setAssegnazioniGara] = useState([])
   const [ruoteMagazzino, setRuoteMagazzino] = useState([])
+  const [trolley, setTrolley] = useState([])
+  const [vistaTrolley, setVistaTrolley] = useState(null)
 
   useEffect(() => {
     async function caricaRuote() {
       try {
-        const [ar, ruote] = await Promise.all([getAssegnazioniRuote(), getRuote()])
+        const [ar, ruote, t] = await Promise.all([
+          getAssegnazioniRuote(),
+          getRuote(),
+          getTrolleyGara(gara.ID_Evento)
+        ])
         const perQuestaGara = ar.filter(a =>
           parseInt(a.Quantita) > 0 &&
           (a.Evento || '').trim() === (gara.Titolo || '').trim()
         )
         setAssegnazioniGara(perQuestaGara)
         setRuoteMagazzino(ruote)
+        setTrolley(t)
       } catch (e) {
         console.warn('Errore caricamento ruote gara:', e)
       }
@@ -369,12 +376,66 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
             )}
             {gara.Luogo && <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>📍 {gara.Luogo}</p>}
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn btn-ghost" onClick={() => onEdit(gara)} style={{ padding: '6px 10px', fontSize: '13px' }}>✏️ Modifica</button>
             <span className={`badge ${gara.Tipo === 'Gara' ? 'badge-danger' : 'badge-warn'}`}>{gara.Tipo}</span>
+            <button
+              onClick={() => setVistaTrolley('menu')}
+              style={{
+                cursor: 'pointer', border: '1px solid var(--border)',
+                borderRadius: '12px',
+                background: trolley.length > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.08)',
+                color: trolley.length > 0 ? 'var(--accent-ok)' : 'var(--text-secondary)',
+                padding: '4px 10px', fontSize: '13px'
+              }}
+            >
+              🧳 Trolley{trolley.length > 0 && ` (${trolley.reduce((s, t) => s + parseInt(t.Quantita || 0), 0)} ruote)`}
+            </button>
           </div>
         </div>
       </div>
+
+      {/* TROLLEY */}
+      {vistaTrolley === 'menu' && (
+        <div className="card" style={{ marginBottom: '16px' }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+            🧳 Trolley
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setVistaTrolley('seleziona')}>
+              ➕ Seleziona ruote
+            </button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setVistaTrolley('visualizza')}>
+              👁 Visualizza contenuto
+            </button>
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{ width: '100%', marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}
+            onClick={() => setVistaTrolley(null)}
+          >
+            Chiudi
+          </button>
+        </div>
+      )}
+
+      {vistaTrolley === 'seleziona' && (
+        <TrolleySelezionaRuote
+          gara={gara}
+          ruoteMagazzino={ruoteMagazzino}
+          onSalvato={(nuovoTrolley) => { setTrolley(nuovoTrolley); setVistaTrolley('visualizza') }}
+          onAnnulla={() => setVistaTrolley('menu')}
+        />
+      )}
+
+      {vistaTrolley === 'visualizza' && (
+        <TrolleyVisualizza
+          gara={gara}
+          trolley={trolley}
+          onAggiornato={(nuovoTrolley) => setTrolley(nuovoTrolley)}
+          onAnnulla={() => setVistaTrolley('menu')}
+        />
+      )}
 
       {/* SCADENZE */}
       {scadenze.length > 0 && (
@@ -1392,6 +1453,193 @@ function ListaDocumentiGara({ driveFolderId }) {
           <span style={{ color: 'var(--accent)', fontSize: '12px', fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}>Apri →</span>
         </a>
       ))}
+    </div>
+  )
+}
+
+// ============================================================
+// TROLLEY — SELEZIONE RUOTE
+// ============================================================
+
+function TrolleySelezionaRuote({ gara, ruoteMagazzino, onSalvato, onAnnulla }) {
+  const [ruoteConDisp, setRuoteConDisp] = useState([])
+  const [selezioni, setSelezioni] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    async function carica() {
+      try {
+        const conDisp = await calcolaDisponibilitaRuote(
+          ruoteMagazzino.filter(r => r.Stato !== 'Eliminato')
+        )
+        const disponibili = conDisp.filter(r => r.Quantita_Disponibile > 0)
+        setRuoteConDisp(disponibili)
+        const init = {}
+        disponibili.forEach(r => { init[r.ID_Set] = 0 })
+        setSelezioni(init)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    carica()
+  }, [])
+
+  async function handleSalva() {
+    const daAggiungere = Object.entries(selezioni).filter(([, q]) => parseInt(q) > 0)
+    if (daAggiungere.length === 0) { alert('Seleziona almeno un set di ruote'); return }
+    setSaving(true)
+    try {
+      for (const [idSet, quantita] of daAggiungere) {
+        const set = ruoteMagazzino.find(r => r.ID_Set === idSet)
+        if (!set) continue
+        await aggiuntaTrolley(
+          gara.ID_Evento, gara.Titolo,
+          idSet, set.Nome || '',
+          set.Diametro_mm || '', set.Durezza_A || '',
+          parseInt(quantita), ''
+        )
+      }
+      const nuovoTrolley = await getTrolleyGara(gara.ID_Evento)
+      onSalvato(nuovoTrolley)
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <div className="loading-center">Caricamento...</div>
+
+  return (
+    <div className="card" style={{ marginBottom: '16px' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '12px' }}>
+        🧳 Seleziona ruote per il trolley
+      </div>
+
+      {ruoteConDisp.length === 0 ? (
+        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>Nessuna ruota disponibile</div>
+      ) : ruoteConDisp.map(r => (
+        <div key={r.ID_Set} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: '600', fontSize: '14px' }}>{r.Nome || `${r.Diametro_mm}mm`}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                {r.Diametro_mm}mm · {r.Durezza_A} · {r.Quantita_Disponibile} disponibili
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="number"
+                min="0"
+                max={r.Quantita_Disponibile}
+                value={selezioni[r.ID_Set] || 0}
+                onChange={e => setSelezioni(prev => ({ ...prev, [r.ID_Set]: e.target.value === '' ? 0 : e.target.value }))}
+                style={{ width: '60px', padding: '6px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
+              />
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ruote</span>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+        <button className="btn btn-primary" onClick={handleSalva} disabled={saving} style={{ flex: 1 }}>
+          {saving ? 'Salvataggio...' : '🧳 Aggiungi al trolley'}
+        </button>
+        <button className="btn btn-ghost" onClick={onAnnulla} style={{ flex: 1 }}>Annulla</button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// TROLLEY — VISUALIZZAZIONE E RESTITUZIONE
+// ============================================================
+
+function TrolleyVisualizza({ gara, trolley, onAggiornato, onAnnulla }) {
+  const [saving, setSaving] = useState(null)
+  const [savingTutto, setSavingTutto] = useState(false)
+
+  const totaleRuote = trolley.reduce((s, t) => s + parseInt(t.Quantita || 0), 0)
+
+  async function handleRestituisci(voce) {
+    setSaving(voce.ID_Trolley)
+    try {
+      await restituisciTrolleyVoce(voce.ID_Trolley)
+      const nuovoTrolley = await getTrolleyGara(gara.ID_Evento)
+      onAggiornato(nuovoTrolley)
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  async function handleRestituisciTutto() {
+    if (!confirm('Restituire tutte le ruote del trolley?')) return
+    setSavingTutto(true)
+    try {
+      await restituisciTrolleyTutto(gara.ID_Evento)
+      onAggiornato([])
+    } catch (err) {
+      alert('Errore: ' + err.message)
+    } finally {
+      setSavingTutto(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: '16px' }}>
+      <div style={{ fontFamily: 'var(--font-display)', fontSize: '16px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
+        🧳 Trolley — {gara.Titolo}
+      </div>
+      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+        {trolley.length} set · {totaleRuote} ruote totali
+      </div>
+
+      {trolley.length === 0 ? (
+        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>Trolley vuoto</div>
+      ) : (
+        <>
+          {trolley.map(t => (
+            <div key={t.ID_Trolley} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontWeight: '600', fontSize: '14px' }}>{t.Nome_Set || `${t.Diametro}mm`}</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  {t.Diametro}mm · {t.Durezza} · {t.Quantita} ruote
+                </div>
+              </div>
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '12px', color: 'var(--accent)' }}
+                disabled={saving === t.ID_Trolley}
+                onClick={() => handleRestituisci(t)}
+              >
+                {saving === t.ID_Trolley ? '...' : '↩ Restituisci'}
+              </button>
+            </div>
+          ))}
+          <button
+            className="btn btn-ghost"
+            style={{ width: '100%', marginTop: '12px', color: 'var(--accent)', borderColor: 'rgba(232,51,74,0.3)' }}
+            onClick={handleRestituisciTutto}
+            disabled={savingTutto}
+          >
+            {savingTutto ? 'Restituzione...' : '↩ Restituisci tutto'}
+          </button>
+        </>
+      )}
+
+      <button
+        className="btn btn-ghost"
+        style={{ width: '100%', marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}
+        onClick={onAnnulla}
+      >
+        Chiudi
+      </button>
     </div>
   )
 }

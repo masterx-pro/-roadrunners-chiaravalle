@@ -606,8 +606,97 @@ export async function getAssegnazioniRuoteSet(idSet) {
   return assegnazioni.filter(a => a.ID_Set === idSet)
 }
 
+// ============================================================
+// TROLLEY GARA
+// ============================================================
+
+export async function getTrolleyGara(idGara) {
+  try {
+    const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
+    return (righe || []).filter(r => r.ID_Gara === idGara && parseInt(r.Quantita || 0) > 0)
+  } catch (e) {
+    console.warn('Foglio Trolley_Gara non trovato:', e)
+    return []
+  }
+}
+
+export async function getTrolleyTutti() {
+  try {
+    const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
+    return (righe || []).filter(r => parseInt(r.Quantita || 0) > 0)
+  } catch (e) {
+    return []
+  }
+}
+
+export async function aggiuntaTrolley(idGara, titoloGara, idSet, nomeSet, diametro, durezza, quantita, note) {
+  const ruote = await leggiSheet(SHEETS.RUOTE)
+  const set = ruote.find(r => r.ID_Set === idSet)
+  if (!set) throw new Error('Set ruote non trovato')
+
+  const conDisp = await calcolaDisponibilitaRuote([set])
+  const disponibili = conDisp[0]?.Quantita_Disponibile || 0
+
+  if (parseInt(quantita) > disponibili) {
+    throw new Error(`Disponibili solo ${disponibili} ruote (richieste ${quantita})`)
+  }
+
+  const id = `TRL-${String(Date.now()).slice(-6)}`
+  const oggi = new Date().toISOString().split('T')[0]
+
+  await aggiungiRiga(SHEETS.TROLLEY_GARA, [
+    id, idGara, titoloGara, idSet,
+    nomeSet || '', diametro || '', durezza || '',
+    String(quantita), oggi, note || ''
+  ])
+
+  invalidaCache(SHEETS.TROLLEY_GARA)
+  await scriviLog('Trolley', 'Ruote', `${quantita} ${nomeSet || diametro + 'mm'} per ${titoloGara}`)
+  return id
+}
+
+export async function restituisciTrolleyVoce(idTrolley) {
+  const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
+  const idx = righe.findIndex(r => r.ID_Trolley === idTrolley)
+  if (idx === -1) throw new Error('Voce trolley non trovata')
+
+  const r = righe[idx]
+  await aggiornaRiga(SHEETS.TROLLEY_GARA, idx, [
+    r.ID_Trolley, r.ID_Gara, r.Titolo_Gara, r.ID_Set,
+    r.Nome_Set, r.Diametro, r.Durezza,
+    '0', r.Data, `Restituito il ${new Date().toISOString().split('T')[0]}`
+  ])
+
+  invalidaCache(SHEETS.TROLLEY_GARA)
+  await scriviLog('Restituzione', 'Trolley', `${r.Quantita} ${r.Nome_Set || r.Diametro + 'mm'} restituite`)
+}
+
+export async function restituisciTrolleyTutto(idGara) {
+  const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
+  const vociGara = righe
+    .map((r, idx) => ({ ...r, _idx: idx }))
+    .filter(r => r.ID_Gara === idGara && parseInt(r.Quantita || 0) > 0)
+
+  const oggi = new Date().toISOString().split('T')[0]
+
+  for (const r of vociGara) {
+    await aggiornaRiga(SHEETS.TROLLEY_GARA, r._idx, [
+      r.ID_Trolley, r.ID_Gara, r.Titolo_Gara, r.ID_Set,
+      r.Nome_Set, r.Diametro, r.Durezza,
+      '0', r.Data, `Restituito il ${oggi}`
+    ])
+  }
+
+  invalidaCache(SHEETS.TROLLEY_GARA)
+  await scriviLog('Restituzione', 'Trolley', `Tutto il trolley restituito per ${vociGara[0]?.Titolo_Gara || idGara}`)
+  return vociGara.length
+}
+
 export async function calcolaDisponibilitaRuote(ruote) {
-  const assegnazioni = await getAssegnazioniRuote()
+  const [assegnazioni, trolley] = await Promise.all([
+    getAssegnazioniRuote().catch(() => []),
+    getTrolleyTutti().catch(() => [])
+  ])
 
   return (ruote || []).map(set => {
     const totaleAssegnate = (assegnazioni || [])
@@ -617,13 +706,21 @@ export async function calcolaDisponibilitaRuote(ruote) {
         return sum + (isNaN(q) ? 0 : q)
       }, 0)
 
+    const totaleTrolley = (trolley || [])
+      .filter(t => t?.ID_Set === set?.ID_Set)
+      .reduce((sum, t) => {
+        const q = parseInt(t?.Quantita || 0)
+        return sum + (isNaN(q) ? 0 : q)
+      }, 0)
+
     const totale = parseInt(set?.Quantita || 0)
-    const disponibili = totale - totaleAssegnate
+    const disponibili = totale - totaleAssegnate - totaleTrolley
 
     return {
       ...set,
       Quantita_Totale: totale,
       Quantita_Assegnata: totaleAssegnate,
+      Quantita_Trolley: totaleTrolley,
       Quantita_Disponibile: Math.max(0, disponibili)
     }
   })
