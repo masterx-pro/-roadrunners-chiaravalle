@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote, getTrolleyGara, aggiuntaTrolley, restituisciTrolleyVoce, restituisciTrolleyTutto } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote, rimuoviAssegnazioneRuote, getTrolleyGara, aggiuntaTrolley, restituisciTrolleyVoce, restituisciTrolleyTutto } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -279,6 +279,8 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [ruoteMagazzino, setRuoteMagazzino] = useState([])
   const [trolley, setTrolley] = useState([])
   const [vistaTrolley, setVistaTrolley] = useState(null)
+  const [menuAtleta, setMenuAtleta] = useState(null)
+  const [atletaPerRuote, setAtletaPerRuote] = useState(null)
 
   useEffect(() => {
     async function caricaRuote() {
@@ -632,7 +634,14 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
               <div
                 key={a.ID_Atleta}
                 style={{ padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
-                onClick={() => !saving && toggleIscritto(a.ID_Atleta, `${a.Nome} ${a.Cognome}`)}
+                onClick={() => {
+                  if (saving) return
+                  if (!isIscritto) {
+                    toggleIscritto(a.ID_Atleta, `${a.Nome} ${a.Cognome}`)
+                    return
+                  }
+                  setMenuAtleta({ atleta: a, ruote: ruoteAtleta })
+                }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                   <div className="atleta-avatar" style={{
@@ -681,10 +690,105 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
       </div>
 
       {/* RUOTE PER GARA */}
+      {/* MENU CONTESTUALE ATLETA */}
+      {menuAtleta && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+          onClick={() => setMenuAtleta(null)}
+        >
+          <div
+            style={{ background: 'var(--bg-card)', borderRadius: '16px 16px 0 0', padding: '20px 16px 32px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ fontFamily: 'var(--font-display)', fontSize: '18px', fontWeight: '700', textTransform: 'uppercase', marginBottom: '4px' }}>
+              {menuAtleta.atleta.Nome} {menuAtleta.atleta.Cognome}
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              {menuAtleta.atleta.Nome_Categoria || ''}
+              {menuAtleta.ruote.length > 0 && (
+                <span style={{ color: 'var(--accent-ok)', marginLeft: '8px' }}>
+                  ⭕ {menuAtleta.ruote.reduce((s, r) => s + parseInt(r.Quantita || 0), 0)} ruote assegnate
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                className="btn btn-ghost"
+                style={{ width: '100%', padding: '14px', fontSize: '15px', color: 'var(--accent)', borderColor: 'rgba(232,51,74,0.3)', justifyContent: 'center' }}
+                onClick={async () => {
+                  if (!confirm(`Rimuovere ${menuAtleta.atleta.Nome} ${menuAtleta.atleta.Cognome} dalla gara?`)) return
+                  await toggleIscritto(menuAtleta.atleta.ID_Atleta, `${menuAtleta.atleta.Nome} ${menuAtleta.atleta.Cognome}`)
+                  setMenuAtleta(null)
+                }}
+              >
+                ❌ Rimuovi dalla gara
+              </button>
+
+              {menuAtleta.ruote.length === 0 && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ width: '100%', padding: '14px', fontSize: '15px', color: 'var(--accent-ok)', borderColor: 'rgba(16,185,129,0.3)', justifyContent: 'center' }}
+                  onClick={() => {
+                    setAtletaPerRuote(menuAtleta.atleta)
+                    setMenuAtleta(null)
+                  }}
+                >
+                  ⭕ Assegna ruote
+                </button>
+              )}
+
+              {menuAtleta.ruote.length > 0 && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ width: '100%', padding: '14px', fontSize: '15px', color: 'var(--accent-warn)', borderColor: 'rgba(245,158,11,0.3)', justifyContent: 'center' }}
+                  onClick={async () => {
+                    if (!confirm(`Riconsegnare le ruote di ${menuAtleta.atleta.Nome} ${menuAtleta.atleta.Cognome}?`)) return
+                    try {
+                      for (const r of menuAtleta.ruote) {
+                        await rimuoviAssegnazioneRuote(r.ID_Assegnazione)
+                      }
+                      const ar = await getAssegnazioniRuote()
+                      const perQuestaGara = ar.filter(a =>
+                        parseInt(a.Quantita || 0) > 0 &&
+                        (a.Evento || '').trim().toLowerCase() === (gara.Titolo || '').trim().toLowerCase()
+                      )
+                      setAssegnazioniGara(perQuestaGara)
+                      setMenuAtleta(null)
+                    } catch (err) {
+                      alert('Errore: ' + err.message)
+                    }
+                  }}
+                >
+                  ↩ Riconsegna ruote
+                </button>
+              )}
+
+              <button
+                className="btn btn-ghost"
+                style={{ width: '100%', padding: '14px', fontSize: '14px', color: 'var(--text-secondary)', justifyContent: 'center' }}
+                onClick={() => setMenuAtleta(null)}
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RUOTE PER GARA */}
       {iscritti.length > 0 && (
         <AssegnaRuoteGara
+          key={atletaPerRuote ? atletaPerRuote.ID_Atleta : 'tutti'}
           gara={gara}
-          atletiIscritti={atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))}
+          atletiIscritti={
+            atletaPerRuote
+              ? atletiAttivi.filter(a =>
+                  (a.Codice_Fiscale || a.ID_Atleta) === (atletaPerRuote.Codice_Fiscale || atletaPerRuote.ID_Atleta)
+                )
+              : atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))
+          }
+          forceAperto={!!atletaPerRuote}
           onAssegnazioniAggiornate={async () => {
             try {
               const ar = await getAssegnazioniRuote()
@@ -693,6 +797,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
                 (a.Evento || '').trim().toLowerCase() === (gara.Titolo || '').trim().toLowerCase()
               )
               setAssegnazioniGara(perQuestaGara)
+              setAtletaPerRuote(null)
             } catch (e) {}
           }}
         />
@@ -705,12 +810,16 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
 // ASSEGNA RUOTE PER GARA
 // ============================================================
 
-function AssegnaRuoteGara({ gara, atletiIscritti, onAssegnazioniAggiornate }) {
+function AssegnaRuoteGara({ gara, atletiIscritti, onAssegnazioniAggiornate, forceAperto }) {
   const [aperto, setAperto] = useState(false)
   const [ruote, setRuote] = useState([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [assegnazioni, setAssegnazioni] = useState({})
+
+  useEffect(() => {
+    if (forceAperto && !aperto) apriPannello()
+  }, [forceAperto])
 
   async function apriPannello() {
     if (!aperto) {
