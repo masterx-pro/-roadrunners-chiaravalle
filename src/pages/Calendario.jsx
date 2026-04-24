@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote } from '../utils/sheetsApi'
+import { getSlotFissi, getEventiSpeciali, getAtleti, getCategorie, registraPresenza, salvaPresenzaSingola, getPresenze, aggiornaIscrittGara, aggiornaStatoPagamentoGara, creaEvento, aggiornaEvento, togglePartecipazione, toggleIscrizioneComunicata, creaCartellaGara, caricaDocumentoGara, getRuote, calcolaDisponibilitaRuote, assegnaRuote, getAssegnazioniRuote } from '../utils/sheetsApi'
 import { formattaData, statoScadenza, giorniAllaScadenza } from '../utils/dateUtils'
 import { esportaIscrittGaraPDF, esportaIscrittGaraExcel } from '../utils/exportUtils'
 
@@ -275,6 +275,33 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   const [docCaricato, setDocCaricato] = useState({ ricevuta: false, iscrizione: false })
   const [ricercaAtleta, setRicercaAtleta] = useState('')
   const [mostraSoloIscritti, setMostraSoloIscritti] = useState(false)
+  const [assegnazioniGara, setAssegnazioniGara] = useState([])
+  const [ruoteMagazzino, setRuoteMagazzino] = useState([])
+
+  useEffect(() => {
+    async function caricaRuote() {
+      try {
+        const [ar, ruote] = await Promise.all([getAssegnazioniRuote(), getRuote()])
+        const perQuestaGara = ar.filter(a =>
+          parseInt(a.Quantita) > 0 &&
+          (a.Evento || '').trim() === (gara.Titolo || '').trim()
+        )
+        setAssegnazioniGara(perQuestaGara)
+        setRuoteMagazzino(ruote)
+      } catch (e) {
+        console.warn('Errore caricamento ruote gara:', e)
+      }
+    }
+    if (gara?.Titolo) caricaRuote()
+  }, [gara?.Titolo])
+
+  function getRuoteAtleta(codiceFiscale) {
+    return assegnazioniGara.filter(a => a.ID_Atleta === codiceFiscale)
+  }
+
+  function getInfoSet(idSet) {
+    return ruoteMagazzino.find(r => r.ID_Set === idSet)
+  }
 
   useEffect(() => {
     if (!gara.Drive_Folder_Gara) return
@@ -486,7 +513,14 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
 
       {/* ISCRITTI */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="section-title" style={{ marginBottom: 0 }}>Atleti iscritti ({iscritti.length}/{atletiAttivi.length})</div>
+        <div className="section-title" style={{ marginBottom: 0 }}>
+          Atleti iscritti ({iscritti.length}/{atletiAttivi.length})
+          {assegnazioniGara.length > 0 && (
+            <span style={{ fontSize: '12px', color: 'var(--accent-ok)', marginLeft: '8px', fontFamily: 'var(--font-body)', textTransform: 'none', fontWeight: '400' }}>
+              · ⭕ {[...new Set(assegnazioniGara.map(a => a.ID_Atleta))].length} atleti con ruote
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button
             className={`btn ${mostraSoloIscritti ? 'btn-primary' : 'btn-ghost'}`}
@@ -528,26 +562,54 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
           }
           return lista.map(a => {
             const isIscritto = iscritti.includes(a.ID_Atleta)
+            const cf = a.Codice_Fiscale || a.ID_Atleta
+            const ruoteAtleta = getRuoteAtleta(cf)
             return (
               <div
                 key={a.ID_Atleta}
-                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                style={{ padding: '10px 0', borderBottom: '1px solid var(--border)', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
                 onClick={() => !saving && toggleIscritto(a.ID_Atleta, `${a.Nome} ${a.Cognome}`)}
               >
-                <div className="atleta-avatar" style={{
-                  background: isIscritto ? 'var(--accent)' : 'var(--bg-elevated)',
-                  color: isIscritto ? 'white' : 'var(--text-secondary)',
-                  transition: 'all 0.2s'
-                }}>
-                  {isIscritto ? '✓' : `${a.Nome?.[0]}${a.Cognome?.[0]}`}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                  <div className="atleta-avatar" style={{
+                    background: isIscritto ? 'var(--accent)' : 'var(--bg-elevated)',
+                    color: isIscritto ? 'white' : 'var(--text-secondary)',
+                    transition: 'all 0.2s',
+                    flexShrink: 0,
+                    marginTop: '2px'
+                  }}>
+                    {isIscritto ? '✓' : `${a.Nome?.[0]}${a.Cognome?.[0]}`}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="atleta-nome">{a.Nome} {a.Cognome}{a.Numero_Gara ? ` — #${a.Numero_Gara}` : ''}</div>
+                      <span style={{ color: isIscritto ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '13px', flexShrink: 0, marginLeft: '8px' }}>
+                        {isIscritto ? 'Iscritto' : 'Non iscritto'}
+                      </span>
+                    </div>
+                    <div className="atleta-sub">{a.Nome_Categoria || '—'}</div>
+                    {ruoteAtleta.length > 0 && (
+                      <div style={{ marginTop: '4px' }}>
+                        {ruoteAtleta.map(r => {
+                          const set = getInfoSet(r.ID_Set)
+                          return (
+                            <span key={r.ID_Assegnazione} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: '4px',
+                              fontSize: '12px', color: 'var(--accent-ok)',
+                              background: 'rgba(16,185,129,0.1)',
+                              borderRadius: '4px',
+                              padding: '2px 8px',
+                              marginRight: '4px',
+                              marginTop: '2px'
+                            }}>
+                              ⭕ {r.Quantita} ruote{set && ` · ${set.Nome || ''} ${set.Diametro_mm}mm ${set.Durezza_A}`}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="atleta-info">
-                  <div className="atleta-nome">{a.Nome} {a.Cognome}{a.Numero_Gara ? ` — #${a.Numero_Gara}` : ''}</div>
-                  <div className="atleta-sub">{a.Nome_Categoria || '—'}</div>
-                </div>
-                <span style={{ color: isIscritto ? 'var(--accent)' : 'var(--text-secondary)', fontSize: '13px' }}>
-                  {isIscritto ? 'Iscritto' : 'Non iscritto'}
-                </span>
               </div>
             )
           })

@@ -1072,8 +1072,8 @@ export async function aggiornaPagamento(idPagamento, updates) {
 
 export async function generaQuoteAtleta(idAtleta, nomeAtleta, importo, tipoRate) {
   const config = await getConfigurazione()
-  const scadRata1 = config.Scadenza_Rata_1 || '10'
-  const scadRata2 = config.Scadenza_Rata_2 || '01'
+  const scadRata1 = String(config.Scadenza_Rata_1 || '10').padStart(2, '0')
+  const scadRata2 = String(config.Scadenza_Rata_2 || '01').padStart(2, '0')
   const anno = new Date().getFullYear()
   const stagione = `${anno}/${anno + 1}`
 

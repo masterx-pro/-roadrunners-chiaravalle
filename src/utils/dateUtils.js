@@ -116,7 +116,7 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
 
   // Certificati medici in scadenza
   atleti
-    .filter(a => a.Attivo === 'TRUE')
+    .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
     .forEach(a => {
       const stato = statoScadenza(a.Scad_Certificato)
       if (stato === 'scaduto' || stato === 'urgente' || stato === 'in_scadenza' || stato === 'mancante') {
@@ -135,7 +135,7 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
 
   // Tessere FISR in scadenza
   atleti
-    .filter(a => a.Attivo === 'TRUE')
+    .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
     .forEach(a => {
       const stato = statoScadenza(a.Scad_FISR)
       if (stato === 'scaduto' || stato === 'urgente' || stato === 'in_scadenza') {
