@@ -289,8 +289,8 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
           getTrolleyGara(gara.ID_Evento)
         ])
         const perQuestaGara = ar.filter(a =>
-          parseInt(a.Quantita) > 0 &&
-          (a.Evento || '').trim() === (gara.Titolo || '').trim()
+          parseInt(a.Quantita || 0) > 0 &&
+          (a.Evento || '').trim().toLowerCase() === (gara.Titolo || '').trim().toLowerCase()
         )
         setAssegnazioniGara(perQuestaGara)
         setRuoteMagazzino(ruote)
@@ -303,7 +303,10 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
   }, [gara?.Titolo])
 
   function getRuoteAtleta(codiceFiscale) {
-    return assegnazioniGara.filter(a => a.ID_Atleta === codiceFiscale)
+    const cfPulito = (codiceFiscale || '').trim().toUpperCase()
+    return assegnazioniGara.filter(a =>
+      (a.ID_Atleta || '').trim().toUpperCase() === cfPulito
+    )
   }
 
   function getInfoSet(idSet) {
@@ -682,6 +685,16 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
         <AssegnaRuoteGara
           gara={gara}
           atletiIscritti={atletiAttivi.filter(a => iscritti.includes(a.ID_Atleta))}
+          onAssegnazioniAggiornate={async () => {
+            try {
+              const ar = await getAssegnazioniRuote()
+              const perQuestaGara = ar.filter(a =>
+                parseInt(a.Quantita || 0) > 0 &&
+                (a.Evento || '').trim().toLowerCase() === (gara.Titolo || '').trim().toLowerCase()
+              )
+              setAssegnazioniGara(perQuestaGara)
+            } catch (e) {}
+          }}
         />
       )}
     </div>
@@ -692,7 +705,7 @@ function DettaglioGara({ gara, atleti, onBack, onUpdate, onEdit }) {
 // ASSEGNA RUOTE PER GARA
 // ============================================================
 
-function AssegnaRuoteGara({ gara, atletiIscritti }) {
+function AssegnaRuoteGara({ gara, atletiIscritti, onAssegnazioniAggiornate }) {
   const [aperto, setAperto] = useState(false)
   const [ruote, setRuote] = useState([])
   const [loading, setLoading] = useState(false)
@@ -779,6 +792,7 @@ function AssegnaRuoteGara({ gara, atletiIscritti }) {
       const r = await getRuote()
       const conDisp = await calcolaDisponibilitaRuote(r.filter(s => s.Stato !== 'Eliminato'))
       setRuote(conDisp.filter(s => s.Quantita_Disponibile > 0))
+      if (onAssegnazioniAggiornate) await onAssegnazioniAggiornate()
     } catch (err) {
       alert('Errore: ' + err.message)
     } finally {
@@ -1466,6 +1480,7 @@ function TrolleySelezionaRuote({ gara, ruoteMagazzino, onSalvato, onAnnulla }) {
   const [selezioni, setSelezioni] = useState({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [filtroDiametro, setFiltroDiametro] = useState(null)
 
   useEffect(() => {
     async function carica() {
@@ -1521,29 +1536,59 @@ function TrolleySelezionaRuote({ gara, ruoteMagazzino, onSalvato, onAnnulla }) {
 
       {ruoteConDisp.length === 0 ? (
         <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>Nessuna ruota disponibile</div>
-      ) : ruoteConDisp.map(r => (
-        <div key={r.ID_Set} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontWeight: '600', fontSize: '14px' }}>{r.Nome || `${r.Diametro_mm}mm`}</div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                {r.Diametro_mm}mm · {r.Durezza_A} · {r.Quantita_Disponibile} disponibili
+      ) : (() => {
+        const diametriDisponibili = [...new Set(ruoteConDisp.map(r => r.Diametro_mm).filter(Boolean))]
+          .sort((a, b) => parseInt(a) - parseInt(b))
+        const ruoteFiltrate = filtroDiametro
+          ? ruoteConDisp.filter(r => r.Diametro_mm === filtroDiametro)
+          : ruoteConDisp
+        return (
+          <>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px' }}>
+              <button
+                className={`badge ${!filtroDiametro ? 'badge-danger' : 'badge-muted'}`}
+                style={{ cursor: 'pointer', border: 'none', padding: '6px 10px', fontSize: '12px' }}
+                onClick={() => setFiltroDiametro(null)}
+              >
+                Tutti
+              </button>
+              {diametriDisponibili.map(d => (
+                <button
+                  key={d}
+                  className={`badge ${filtroDiametro === d ? 'badge-danger' : 'badge-muted'}`}
+                  style={{ cursor: 'pointer', border: 'none', padding: '6px 10px', fontSize: '12px' }}
+                  onClick={() => setFiltroDiametro(filtroDiametro === d ? null : d)}
+                >
+                  {d}mm
+                </button>
+              ))}
+            </div>
+            {ruoteFiltrate.map(r => (
+              <div key={r.ID_Set} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontWeight: '600', fontSize: '14px' }}>{r.Nome || `${r.Diametro_mm}mm`}</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {r.Diametro_mm}mm · {r.Durezza_A} · {r.Quantita_Disponibile} disponibili
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      max={r.Quantita_Disponibile}
+                      value={selezioni[r.ID_Set] || 0}
+                      onChange={e => setSelezioni(prev => ({ ...prev, [r.ID_Set]: e.target.value === '' ? 0 : e.target.value }))}
+                      style={{ width: '60px', padding: '6px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
+                    />
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ruote</span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <input
-                type="number"
-                min="0"
-                max={r.Quantita_Disponibile}
-                value={selezioni[r.ID_Set] || 0}
-                onChange={e => setSelezioni(prev => ({ ...prev, [r.ID_Set]: e.target.value === '' ? 0 : e.target.value }))}
-                style={{ width: '60px', padding: '6px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-primary)', fontSize: '13px' }}
-              />
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>ruote</span>
-            </div>
-          </div>
-        </div>
-      ))}
+            ))}
+          </>
+        )
+      })()}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
         <button className="btn btn-primary" onClick={handleSalva} disabled={saving} style={{ flex: 1 }}>
