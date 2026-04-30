@@ -607,29 +607,32 @@ export async function getAssegnazioniRuoteSet(idSet) {
 }
 
 // ============================================================
-// TROLLEY GARA
+// TROLLEY (due contenitori fissi: TRL-J e TRL-S)
 // ============================================================
 
-export async function getTrolleyGara(idGara) {
+export async function getTrolley(idTrolley) {
   try {
-    const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
-    return (righe || []).filter(r => r.ID_Gara === idGara && parseInt(r.Quantita || 0) > 0)
+    const righe = await leggiSheet(SHEETS.TROLLEY)
+    return (righe || []).filter(r =>
+      r.ID_Trolley === idTrolley &&
+      parseInt(r.Quantita || 0) > 0
+    )
   } catch (e) {
-    console.warn('Foglio Trolley_Gara non trovato:', e)
+    console.warn('Foglio Trolley non trovato:', e)
     return []
   }
 }
 
 export async function getTrolleyTutti() {
   try {
-    const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
+    const righe = await leggiSheet(SHEETS.TROLLEY)
     return (righe || []).filter(r => parseInt(r.Quantita || 0) > 0)
   } catch (e) {
     return []
   }
 }
 
-export async function aggiuntaTrolley(idGara, titoloGara, idSet, nomeSet, diametro, durezza, quantita, note) {
+export async function aggiuntaTrolley(idTrolley, idSet, nomeSet, diametro, durezza, quantita, note) {
   const ruote = await leggiSheet(SHEETS.RUOTE)
   const set = ruote.find(r => r.ID_Set === idSet)
   if (!set) throw new Error('Set ruote non trovato')
@@ -644,52 +647,55 @@ export async function aggiuntaTrolley(idGara, titoloGara, idSet, nomeSet, diamet
   const id = `TRL-${String(Date.now()).slice(-6)}`
   const oggi = new Date().toISOString().split('T')[0]
 
-  await aggiungiRiga(SHEETS.TROLLEY_GARA, [
-    id, idGara, titoloGara, idSet,
+  await aggiungiRiga(SHEETS.TROLLEY, [
+    id, idTrolley, idSet,
     nomeSet || '', diametro || '', durezza || '',
     String(quantita), oggi, note || ''
   ])
 
-  invalidaCache(SHEETS.TROLLEY_GARA)
-  await scriviLog('Trolley', 'Ruote', `${quantita} ${nomeSet || diametro + 'mm'} per ${titoloGara}`)
+  invalidaCache(SHEETS.TROLLEY)
+
+  const nomeTrolley = { 'TRL-J': 'Trolley Junior', 'TRL-S': 'Trolley Senior' }[idTrolley] || idTrolley
+  await scriviLog('Trolley', 'Ruote', `${quantita} ${nomeSet || diametro + 'mm'} → ${nomeTrolley}`)
   return id
 }
 
-export async function restituisciTrolleyVoce(idTrolley) {
-  const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
-  const idx = righe.findIndex(r => r.ID_Trolley === idTrolley)
+export async function restituisciTrolleyVoce(idVoce) {
+  const righe = await leggiSheet(SHEETS.TROLLEY)
+  const idx = righe.findIndex(r => r.ID_Voce === idVoce)
   if (idx === -1) throw new Error('Voce trolley non trovata')
 
   const r = righe[idx]
-  await aggiornaRiga(SHEETS.TROLLEY_GARA, idx, [
-    r.ID_Trolley, r.ID_Gara, r.Titolo_Gara, r.ID_Set,
+  await aggiornaRiga(SHEETS.TROLLEY, idx, [
+    r.ID_Voce, r.ID_Trolley, r.ID_Set,
     r.Nome_Set, r.Diametro, r.Durezza,
     '0', r.Data, `Restituito il ${new Date().toISOString().split('T')[0]}`
   ])
 
-  invalidaCache(SHEETS.TROLLEY_GARA)
+  invalidaCache(SHEETS.TROLLEY)
   await scriviLog('Restituzione', 'Trolley', `${r.Quantita} ${r.Nome_Set || r.Diametro + 'mm'} restituite`)
 }
 
-export async function restituisciTrolleyTutto(idGara) {
-  const righe = await leggiSheet(SHEETS.TROLLEY_GARA)
-  const vociGara = righe
+export async function restituisciTrolleyTutto(idTrolley) {
+  const righe = await leggiSheet(SHEETS.TROLLEY)
+  const voci = righe
     .map((r, idx) => ({ ...r, _idx: idx }))
-    .filter(r => r.ID_Gara === idGara && parseInt(r.Quantita || 0) > 0)
+    .filter(r => r.ID_Trolley === idTrolley && parseInt(r.Quantita || 0) > 0)
 
   const oggi = new Date().toISOString().split('T')[0]
 
-  for (const r of vociGara) {
-    await aggiornaRiga(SHEETS.TROLLEY_GARA, r._idx, [
-      r.ID_Trolley, r.ID_Gara, r.Titolo_Gara, r.ID_Set,
+  for (const r of voci) {
+    await aggiornaRiga(SHEETS.TROLLEY, r._idx, [
+      r.ID_Voce, r.ID_Trolley, r.ID_Set,
       r.Nome_Set, r.Diametro, r.Durezza,
       '0', r.Data, `Restituito il ${oggi}`
     ])
   }
 
-  invalidaCache(SHEETS.TROLLEY_GARA)
-  await scriviLog('Restituzione', 'Trolley', `Tutto il trolley restituito per ${vociGara[0]?.Titolo_Gara || idGara}`)
-  return vociGara.length
+  invalidaCache(SHEETS.TROLLEY)
+  const nomeTrolley = { 'TRL-J': 'Trolley Junior', 'TRL-S': 'Trolley Senior' }[idTrolley] || idTrolley
+  await scriviLog('Restituzione', 'Trolley', `${nomeTrolley} svuotato (${voci.length} voci)`)
+  return voci.length
 }
 
 export async function calcolaDisponibilitaRuote(ruote) {

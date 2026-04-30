@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { getAtleti, getPattini, getEventiSpeciali, leggiSheet, getAssegnazioniRuote } from '../utils/sheetsApi'
 import { SHEETS } from '../config/google'
 import { calcolaAlert, formattaData } from '../utils/dateUtils'
+import TrolleyPanel from '../components/TrolleyPanel'
 
 export default function Dashboard({ nav }) {
   const [atleti, setAtleti] = useState([])
@@ -10,6 +11,7 @@ export default function Dashboard({ nav }) {
   const [pagamenti, setPagamenti] = useState([])
   const [assegnazioniRuote, setAssegnazioniRuote] = useState([])
   const [loading, setLoading] = useState(true)
+  const [mostraTrolley, setMostraTrolley] = useState(false)
 
   useEffect(() => {
     async function carica() {
@@ -49,8 +51,21 @@ export default function Dashboard({ nav }) {
     <div>
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
-        <span style={{ fontSize: '24px' }}>🛼</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            className="badge badge-muted"
+            style={{ cursor: 'pointer', border: 'none', padding: '6px 12px', fontSize: '13px' }}
+            onClick={() => setMostraTrolley(!mostraTrolley)}
+          >
+            🧳 Trolley
+          </button>
+          <span style={{ fontSize: '24px' }}>🛼</span>
+        </div>
       </div>
+
+      {mostraTrolley && (
+        <TrolleyPanel onClose={() => setMostraTrolley(false)} />
+      )}
 
       {/* STATS */}
       <div className="stats-grid">

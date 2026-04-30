@@ -89,7 +89,17 @@ export const SHEETS = {
   CONFIGURAZIONE:  'Configurazione',
   STORICO_SCADENZE: 'Storico_Scadenze',
   ASSEGNAZIONE_RUOTE: 'Assegnazione_Ruote',
-  TROLLEY_GARA:       'Trolley_Gara'
+  TROLLEY:            'Trolley'
+}
+
+export const TROLLEY_IDS = {
+  JUNIOR: 'TRL-J',
+  SENIOR: 'TRL-S'
+}
+
+export const TROLLEY_NOMI = {
+  'TRL-J': 'Trolley Junior',
+  'TRL-S': 'Trolley Senior'
 }
 
 // ============================================================

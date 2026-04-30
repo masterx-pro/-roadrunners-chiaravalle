@@ -3,6 +3,7 @@ import { getPattini, getAtleti, getCategorie, creaPattino, aggiornaPattino, asse
 import { formattaData } from '../utils/dateUtils'
 import { SHEETS } from '../config/google'
 import { esportaPattiniExcel, esportaRuoteExcel } from '../utils/exportUtils'
+import TrolleyPanel from '../components/TrolleyPanel'
 
 const isAttivo = v => ['TRUE', 'true', 'True'].includes(v?.trim())
 
@@ -30,6 +31,9 @@ export default function Attrezzature({ nav }) {
         <button className={`btn ${tab === 'ruote' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('ruote')} style={{ flex: 1 }}>
           ⚙️ Ruote
         </button>
+        <button className={`btn ${tab === 'trolley' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('trolley')} style={{ flex: 1 }}>
+          🧳 Trolley
+        </button>
         <button className={`btn ${tab === 'numeri' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab('numeri')} style={{ flex: 1 }}>
           🔢 Numeri
         </button>
@@ -37,6 +41,7 @@ export default function Attrezzature({ nav }) {
 
       {tab === 'pattini' && <PattiniView nav={nav} />}
       {tab === 'ruote' && <RuoteView nav={nav} />}
+      {tab === 'trolley' && <TrolleyPanel onClose={() => setTab('ruote')} />}
       {tab === 'numeri' && <NumeriView />}
     </div>
   )
