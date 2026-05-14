@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
+import { GOOGLE_CONFIG } from './config/google'
 import Dashboard from './pages/Dashboard'
 import Atleti from './pages/Atleti'
 import Attrezzature from './pages/Attrezzature'
@@ -20,6 +21,68 @@ const TABS = [
 export default function App() {
   const { isSignedIn, user, loading, errore, signIn } = useGoogleAuth()
   const [tab, setTab] = useState('home')
+  const [navStack, setNavStack] = useState([{ tab: 'home' }])
+
+  const navigaAvanti = useCallback((nuovoStato) => {
+    setNavStack(prev => {
+      const nuovo = [...prev, nuovoStato]
+      window.history.pushState({ depth: nuovo.length }, '', '')
+      return nuovo
+    })
+    if (nuovoStato.tab) setTab(nuovoStato.tab)
+  }, [])
+
+  const cambiaTab = useCallback((nuovoTab) => {
+    setNavStack([{ tab: nuovoTab }])
+    setTab(nuovoTab)
+    window.history.pushState({ depth: 1 }, '', '')
+  }, [])
+
+  useEffect(() => {
+    window.history.replaceState({ depth: 1 }, '', '')
+
+    function handlePopState() {
+      setNavStack(prev => {
+        if (prev.length <= 1) {
+          window.history.pushState({ depth: 1 }, '', '')
+          return prev
+        }
+        const nuovo = prev.slice(0, -1)
+        const ultimo = nuovo[nuovo.length - 1]
+        if (ultimo.tab) setTab(ultimo.tab)
+        return nuovo
+      })
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const nav = {
+    avanti: navigaAvanti,
+    indietro: () => { window.history.back() },
+    cambiaTab,
+    get stato() { return navStack[navStack.length - 1] },
+    stack: navStack,
+    navigaA: (tab, filtro) => { navigaAvanti({ tab, ...filtro }) }
+  }
+
+  if (!GOOGLE_CONFIG.SPREADSHEET_ID) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', background: 'var(--bg)', gap: '16px', textAlign: 'center' }}>
+        <div style={{ fontSize: '48px' }}>⚠️</div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '24px', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+          App non configurata
+        </h1>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '320px' }}>
+          Questa app non è stata ancora configurata. Contatta l'amministratore per ricevere il link corretto.
+        </p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+          Sviluppato da Mattia Prosperi — masterxpro@gmail.com
+        </p>
+      </div>
+    )
+  }
 
   if (loading) return <div className="loading-center">Caricamento...</div>
   if (!isSignedIn) return <LoginPage onSignIn={signIn} errore={errore} />
@@ -27,10 +90,10 @@ export default function App() {
   return (
     <div className="app-layout">
       <div className="page-content">
-        {tab === 'home'         && <Dashboard />}
-        {tab === 'atleti'       && <Atleti />}
-        {tab === 'attrezzature' && <Attrezzature />}
-        {tab === 'calendario'   && <Calendario />}
+        {tab === 'home'         && <Dashboard nav={nav} />}
+        {tab === 'atleti'       && <Atleti nav={nav} />}
+        {tab === 'attrezzature' && <Attrezzature nav={nav} />}
+        {tab === 'calendario'   && <Calendario nav={nav} />}
         {tab === 'utenti'       && <Utenti />}
       </div>
 
@@ -41,7 +104,7 @@ export default function App() {
             <button
               key={t.id}
               className={`nav-item ${tab === t.id ? 'active' : ''}`}
-              onClick={() => setTab(t.id)}
+              onClick={() => cambiaTab(t.id)}
             >
               <Icon />
               {t.label}

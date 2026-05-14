@@ -12,7 +12,14 @@
       "Bash(cd:*)",
       "Bash(pip install:*)",
       "Bash(python -c \":*)",
-      "Bash(vercel --prod)"
+      "Bash(vercel --prod)",
+      "Bash(python genera_dati_test.py)",
+      "Bash(xargs grep:*)",
+      "Bash(mkdir -p \"C:/Progetto app società sportive/setup\")",
+      "Bash(mkdir -p \"C:/Progetto app società sportive/docs\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

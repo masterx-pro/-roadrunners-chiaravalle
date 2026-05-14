@@ -61,6 +61,10 @@ export function useGoogleAuth() {
             return
           }
 
+          // Carica configurazione Drive dal foglio Configurazione
+          const { getConfigDrive } = await import('../config/google.js')
+          await getConfigDrive()
+
           setUser({
             email,
             nome: utenteAutorizzato.Nome || userInfo.name,

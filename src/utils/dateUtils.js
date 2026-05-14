@@ -50,10 +50,6 @@ export function scadenzaTrimestreCorrente() {
   return new Date(anno, ultimoMese, 0) // giorno 0 = ultimo del mese precedente
 }
 
-export function pattiniDaPagare(pattini) {
-  return pattini.filter(p => p.ID_Atleta && p.Stato_Pagamento === 'Da pagare')
-}
-
 // ============================================================
 // CALCOLO PRIMO PAGAMENTO NUOVO ATLETA
 // ============================================================
@@ -74,6 +70,44 @@ export function calcolaPrimoPagamento(dataIscrizione) {
 }
 
 // ============================================================
+// ADULTO / MINORE
+// ============================================================
+
+export function isAtletaMinore(atleta) {
+  const cat = (atleta.Nome_Categoria || '').toLowerCase()
+  const categorieMinori = ['giovanissimi', 'esordienti', 'ragazzi 12', 'ragazzi', 'allievi', 'primi passi']
+  return categorieMinori.some(c => cat.includes(c))
+}
+
+export function getContattoAtleta(atleta) {
+  const minore = isAtletaMinore(atleta)
+
+  if (minore) {
+    return {
+      minore: true,
+      atletaTelefono: atleta.Cellulare || atleta.Telefono || '',
+      atletaEmail: atleta.Email || '',
+      genitoreNome: atleta.Genitore_Nome || '',
+      genitoreTelefono: atleta.Genitore_Telefono || atleta.Cellulare || atleta.Telefono || '',
+      genitoreEmail: atleta.Genitore_Email || atleta.Email || '',
+      whatsappNumero: atleta.Genitore_Telefono || atleta.Cellulare || atleta.Telefono || '',
+      whatsappNome: atleta.Genitore_Nome || 'Genitore',
+    }
+  } else {
+    return {
+      minore: false,
+      atletaTelefono: atleta.Cellulare || atleta.Telefono || '',
+      atletaEmail: atleta.Email || '',
+      genitoreNome: '',
+      genitoreTelefono: '',
+      genitoreEmail: '',
+      whatsappNumero: atleta.Cellulare || atleta.Telefono || '',
+      whatsappNome: `${atleta.Nome} ${atleta.Cognome}`,
+    }
+  }
+}
+
+// ============================================================
 // ALERT DASHBOARD
 // ============================================================
 
@@ -82,14 +116,16 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
 
   // Certificati medici in scadenza
   atleti
-    .filter(a => a.Attivo === 'TRUE')
+    .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
     .forEach(a => {
       const stato = statoScadenza(a.Scad_Certificato)
       if (stato === 'scaduto' || stato === 'urgente' || stato === 'in_scadenza' || stato === 'mancante') {
+        const contatto = getContattoAtleta(a)
         alerts.push({
           tipo: 'certificato',
           atleta: `${a.Nome} ${a.Cognome}`,
           idAtleta: a.ID_Atleta,
+          telefono: contatto.whatsappNumero,
           stato,
           data: a.Scad_Certificato,
           giorni: giorniAllaScadenza(a.Scad_Certificato)
@@ -99,14 +135,16 @@ export function calcolaAlert(atleti, pattini, eventi = []) {
 
   // Tessere FISR in scadenza
   atleti
-    .filter(a => a.Attivo === 'TRUE')
+    .filter(a => ['TRUE', 'true', 'True'].includes(a.Attivo?.trim()))
     .forEach(a => {
       const stato = statoScadenza(a.Scad_FISR)
       if (stato === 'scaduto' || stato === 'urgente' || stato === 'in_scadenza') {
+        const contatto = getContattoAtleta(a)
         alerts.push({
           tipo: 'fisr',
           atleta: `${a.Nome} ${a.Cognome}`,
           idAtleta: a.ID_Atleta,
+          telefono: contatto.whatsappNumero,
           stato,
           data: a.Scad_FISR,
           giorni: giorniAllaScadenza(a.Scad_FISR)
