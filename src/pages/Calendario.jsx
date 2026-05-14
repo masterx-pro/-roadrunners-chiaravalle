@@ -912,9 +912,11 @@ function AssegnaRuoteGara({ gara, atletiIscritti, onAssegnazioniAggiornate, forc
                           }, 0)
                           const dispReale = Math.max(0, r.Quantita_Disponibile - prenotateAltri)
 
+                          const specs = `${r.Diametro_mm || '?'}mm ${r.Durezza_A || ''}`.trim()
+                          const etichetta = r.Nome ? `${r.Nome} · ${specs}` : specs
                           return (
                             <option key={r.ID_Set} value={r.ID_Set} disabled={dispReale <= 0 && dati.setId !== r.ID_Set}>
-                              {r.Nome ? `${r.Nome} (${dispReale} disp.)` : `${r.Diametro_mm}mm ${r.Durezza_A} (${dispReale} disp.)`}
+                              {etichetta} ({dispReale}/{r.Quantita_Totale} disp.)
                             </option>
                           )
                         })}
